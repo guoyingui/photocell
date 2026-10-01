@@ -1,0 +1,561 @@
+:root {
+  --bg: #14120f;
+  --bg-2: #1e1b16;
+  --fg: #f3eee6;
+  --muted: #9a9286;
+  --line: #3b362e;
+  --pick: #3dcc7a;
+  --reject: #e85d52;
+  --accent: #e8a317;
+  --cool: #6ea8ff;
+  --share: #5ec8c0;
+  --surface: #1d1d22;
+  --image-bg: #101013;
+  --skeleton-shine: #1b1b21;
+  --selected: #26303f;
+  --active-bg: #2a2314;
+  --toast-bg: #2b2b33;
+  --folder: #e8d5b0;
+  --folder-border: #c4a574;
+  --folder-hover: #2a2418;
+  --cool-bg: #1a2436;
+  --share-bg: #16302e;
+  --warn: #e0a441;
+  --progress-fill: #2a4468;
+  --drop-bg: rgba(255, 255, 255, .06);
+  --on-pick: #102016;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f6f8;
+  --bg-2: #ffffff;
+  --fg: #202630;
+  --muted: #626c79;
+  --line: #d4d9e1;
+  --pick: #187845;
+  --reject: #bf342c;
+  --cool: #245ead;
+  --share: #14776e;
+  --surface: #edf0f4;
+  --image-bg: #e8ebef;
+  --skeleton-shine: #f8f9fb;
+  --selected: #e3edfc;
+  --active-bg: #fff3d5;
+  --toast-bg: #ffffff;
+  --folder: #805916;
+  --folder-border: #b0935f;
+  --folder-hover: #fff3d5;
+  --cool-bg: #e9f0fb;
+  --share-bg: #e5f4f0;
+  --warn: #895b08;
+  --progress-fill: #d1e3fa;
+  --drop-bg: rgba(0, 0, 0, .045);
+  --on-pick: #ffffff;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  overscroll-behavior: none;
+}
+
+button {
+  background: var(--bg-2); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #1a1204; font-weight: 600; }
+button.ghost { background: none; border-color: transparent; color: var(--muted); }
+button.btn-folder { border-color: var(--folder-border); color: var(--folder); }
+button.btn-folder:hover:not(:disabled) { border-color: var(--folder); background: var(--folder-hover); }
+button.btn-refresh { border-color: var(--cool); color: var(--cool); }
+button.btn-refresh:hover:not(:disabled) { background: var(--cool-bg); }
+button.btn-share { border-color: var(--share); color: var(--share); }
+button.btn-share:hover:not(:disabled) { background: var(--share-bg); }
+
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.theme-toggle svg { flex: none; }
+.screen-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+.muted { color: var(--muted); }
+.error { color: var(--reject); }
+
+.picker { max-width: 760px; margin: 8vh auto; padding: 0 24px; }
+.picker h1 { font-size: 20px; font-weight: 600; }
+.picker h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 20px 0 8px; }
+.picker-recent-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.picker-recent-item { flex: 1; text-align: left; font-family: ui-monospace, monospace; }
+.picker-recent-del { flex: 0 0 auto; }
+.dirbrowser-path { display: flex; gap: 10px; align-items: center; margin: 16px 0; }
+.dirbrowser-path code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dirbrowser-list { list-style: none; padding: 0; margin: 0; overflow: auto;
+  border: 1px solid var(--line); border-radius: 8px; }
+.dirbrowser-list li { display: flex; justify-content: space-between; padding: 2px 8px; }
+.dirbrowser-name { flex: 1; text-align: left; background: none; border-color: transparent; }
+.dirbrowser-roots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.dirbrowser-root { border-color: var(--line); color: var(--fg); font-size: 12px; padding: 4px 10px; }
+.picker-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.picker-error { margin-top: 18px; padding: 12px 14px; border-radius: 8px;
+  border: 1px solid var(--reject); background: #e2564c1a; color: var(--reject); }
+.picker-error strong { display: block; font-weight: 600; }
+.picker-error code { display: block; margin-top: 6px; font-size: 12px; word-break: break-all; }
+.picker-manual { display: flex; gap: 8px; margin-top: 16px; }
+.picker-manual input { flex: 1; background: var(--bg-2); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font: inherit; }
+
+/* 扫描进度（Task 20）。贴在选择器上方、横贯整屏：扫描期间选择器上的每个
+   按钮都是禁用的，这条是那几十秒里屏幕上唯一在动的东西。
+   进度条**不定长**——扫描没有总数（要走完一遍才知道有多少个文件），
+   所以这里表达的是"还在动"，不是"还剩多少"。 */
+.scan-progress { position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: var(--bg-2); border-bottom: 1px solid var(--line); font-size: 13px; }
+.scan-progress-track { flex: none; width: 140px; height: 4px; border-radius: 2px;
+  background: var(--line); overflow: hidden; }
+.scan-progress-fill { display: block; width: 40%; height: 100%; border-radius: 2px;
+  background: var(--accent); animation: scan-sweep 1.2s ease-in-out infinite; }
+@keyframes scan-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+.scan-progress-text { color: var(--muted); }
+
+.topbar { display: flex; gap: 12px; align-items: center; padding: 10px 16px;
+  border-bottom: 1px solid var(--line); background: var(--bg-2); flex-wrap: wrap; }
+html.tauri .topbar { padding-left: 88px; -webkit-app-region: drag; }
+html.tauri .topbar button,
+html.tauri .topbar input,
+html.tauri .topbar nav,
+html.tauri .topbar .markbar,
+html.tauri .topbar a { -webkit-app-region: no-drag; }
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+.app, .admin { min-width: 1024px; }
+.history-actions { display: flex; gap: 4px; }
+.export-options { border: 0; padding: 0; margin: 0; min-width: 0; }
+.export-scope { padding: 10px 12px; border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--selected); }
+
+.compare-view { position: fixed; inset: 0; z-index: 110; min-width: 1024px;
+  display: flex; flex-direction: column; background: var(--bg); }
+.compare-toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 18px;
+  border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.compare-toolbar .muted { margin-right: auto; }
+.compare-panes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--line); }
+.compare-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.compare-caption { display: flex; align-items: center; gap: 12px; padding: 12px 18px; }
+.compare-caption code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-caption > span { margin-left: auto; color: var(--muted); white-space: nowrap; }
+.compare-stage { position: relative; flex: 1; min-height: 0; overflow: hidden;
+  background: #101013; cursor: grab; user-select: none; display: grid; place-items: center; }
+.compare-stage:active { cursor: grabbing; }
+.compare-image { position: absolute; inset: 0; display: grid; place-items: center; will-change: transform; }
+.compare-image img { width: 100%; height: 100%; object-fit: contain; }
+.compare-actions { display: flex; align-items: center; gap: 8px; padding: 12px 18px; min-height: 57px; }
+.compare-actions .muted { margin-left: auto; }
+.compare-footer { padding: 9px 18px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+
+.notice { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 16px; font-size: 13px; background: var(--surface);
+  border-bottom: 1px solid var(--line); }
+.notice > button { margin-left: auto; }
+.notice-warn { background: #e0a4411a; border-bottom-color: #e0a441; }
+.notice-warn strong { color: var(--warn); }
+.grid-empty { padding: 60px; text-align: center; color: var(--muted); }
+
+.grid-scroll { flex: 1; overflow: auto; contain: strict; padding: 12px; user-select: none; }
+.marquee { position: fixed; pointer-events: none; z-index: 6;
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.grid-inner { position: relative; width: 100%; }
+.grid-row { position: absolute; top: 0; left: 0; width: 100%;
+  display: flex; gap: 12px; padding-bottom: 12px; }
+.grid-row-expanded { flex-direction: column; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.expanded-label { font-size: 12px; color: var(--muted); }
+.expanded-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+
+.thumb { position: relative; margin: 0; background: var(--bg-2);
+  border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; }
+.thumb img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--image-bg); }
+.thumb-compact { width: 150px; flex: 0 0 auto; }
+.thumb figcaption { font-size: 11px; color: var(--muted); padding: 4px 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thumb-skeleton, .thumb-failed { width: 100%; aspect-ratio: 4 / 3; background: var(--image-bg);
+  display: grid; place-items: center; font-size: 12px; color: var(--muted); }
+.thumb-skeleton { background: linear-gradient(100deg, var(--image-bg) 30%, var(--skeleton-shine) 50%, var(--image-bg) 70%);
+  background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.thumb-cursor { outline: 2px solid var(--accent); outline-offset: 1px; }
+.thumb-selected { background: var(--selected); border-color: var(--accent); }
+
+.badge { position: absolute; top: 6px; font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 3px 5px; border-radius: 4px; color: #08111f; }
+.badge-pick { left: 6px; background: var(--pick); color: var(--on-pick); }
+.badge-reject { left: 6px; background: var(--reject); color: #fff; }
+.badge-warn { right: 6px; background: #d9a441; }
+
+/* 标记只表示选片结果：放在图片右下角，不占复选框位置，也不改变整张图的边框。 */
+.thumb > .badge-pick, .thumb > .badge-reject {
+  top: auto; left: auto; right: 6px; bottom: 28px; width: 26px; height: 26px;
+  display: grid; place-items: center; padding: 0; font-size: 16px;
+  border-radius: 50%; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+
+/* 归属角标（规格 §7.5、Task 20）：最后改这张片的人。
+   放在左下角是为了不跟已经占满上沿的三种 .badge 打架，也不压住文件名那一行。
+   pointer-events: none —— 它是一条信息，不是一个可点的东西；盖在格子上却
+   吃掉点击，会让"点一下选中这张"在角标那一小块位置上莫名其妙地失灵。
+   尺寸固定（跟 .presence-dot 同一套理由）：色块是唯一稳定不变的身份线索，
+   不能跟着昵称首字的宽度变形。 */
+.thumb-by { position: absolute; left: 6px; bottom: 28px; width: 18px; height: 18px;
+  border-radius: 50%; display: grid; place-items: center; pointer-events: none;
+  font-size: 10px; font-weight: 600; line-height: 1; color: #fff;
+  text-shadow: 0 1px 1px rgba(0,0,0,.35); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.thumb-compact .thumb-by { bottom: 22px; width: 15px; height: 15px; font-size: 9px; }
+
+.stack { position: relative; }
+.stack-paper { position: absolute; inset: 0; border-radius: 8px;
+  background: var(--bg-2); border: 1px solid var(--line); }
+.stack-paper-1 { transform: translate(4px, 4px); }
+.stack-paper-2 { transform: translate(8px, 8px); opacity: .6; }
+.stack .thumb { position: relative; }
+.stack-count { position: absolute; top: 6px; right: 6px; z-index: 2;
+  padding: 2px 7px; font-size: 11px; font-weight: 700; border-radius: 10px;
+  background: rgba(0,0,0,.72); color: #fff; border: 1px solid rgba(255,255,255,.3); }
+.stack-summary { position: absolute; top: 36px; right: 6px; z-index: 2;
+  font-size: 10px; padding: 2px 5px; border-radius: 4px; background: rgba(0,0,0,.72); color: #9befbc;
+  pointer-events: none; }
+
+.body { flex: 1; display: flex; min-height: 0; }
+.sidebar { width: 190px; flex: 0 0 auto; overflow: auto; padding: 12px;
+  border-right: 1px solid var(--line); }
+.sidebar h2 { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+.dir { display: block; width: 100%; text-align: left; background: none;
+  border-color: transparent; margin-bottom: 2px; font-size: 13px; }
+.dir b { float: right; color: var(--muted); font-weight: 400; }
+.dir-on { background: var(--bg-2); border-color: var(--accent); }
+.dir-row { display: flex; gap: 4px; align-items: center; margin-bottom: 2px; }
+.dir-row .dir { width: auto; flex: 1; min-width: 0; margin-bottom: 0; }
+.dir-exclude { flex: 0 0 auto; }
+.dir-exclude-on { border-color: var(--accent); }
+.warnings { margin-top: 16px; font-size: 12px; color: var(--muted); }
+.warnings ul { padding-left: 16px; }
+
+.tabs { display: flex; gap: 4px; }
+.tab { padding: 5px 11px; }
+.tab b { color: var(--muted); font-weight: 600; }
+.tab-on { border-color: var(--accent); background: var(--active-bg); }
+.tab-on b { color: var(--fg); }
+
+.topbar > code { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; z-index: 50;
+  background: var(--toast-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.toast-error { border-color: var(--reject); color: var(--reject); }
+
+.lightbox { position: fixed; inset: 0; z-index: 100; background: #0b0b0eee;
+  display: flex; flex-direction: column; }
+.lb-stage { flex: 1; display: grid; place-items: center; overflow: hidden; cursor: zoom-in; }
+/* transform-origin 的默认值就是 50% 50%，显式写出来是防止将来有人改掉它而
+   不知道 lightboxZoom.ts 的数学依赖「缩放中心是几何中心」这件事。 */
+.lb-stage img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  transform-origin: 50% 50%; will-change: transform;
+}
+
+.lb-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 3;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  /* .7 是用户定的（原本 .5）。这个值是「不打扰」和「找得到」之间的一次取舍，
+     两者本身就是对立的：.5 在婚纱、雪景这类亮图上，✕ 和圆底的对比度只有
+     1.3:1 量级，几乎看不见。hover / focus 仍然升到 1，Esc 也照常是主退出路径。
+     要再动它是产品决策，不是修缺陷。 */
+  opacity: .7;
+  transition: opacity .15s ease;
+}
+.lb-close:hover,
+.lb-close:focus-visible { opacity: 1; }
+
+.lb-stage.lb-zoom { cursor: grab; }
+.lb-stage.lb-zoom:active { cursor: grabbing; }
+.lb-bar { display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+  border-top: 1px solid var(--line); background: var(--bg-2); font-size: 13px; }
+.lb-bar .badge { position: static; }
+.lb-bar > .muted:last-of-type { margin-left: auto; }
+
+.modal { position: fixed; inset: 0; z-index: 90; background: #000000aa;
+  display: grid; place-items: center; }
+.modal-box { width: min(680px, 92vw); max-height: 88vh; overflow: auto;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.modal-box h2 { font-size: 17px; margin: 0 0 8px; }
+.modal-box.share-panel {
+  display: flex; flex-direction: column; overflow: hidden; padding: 0;
+}
+.share-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex: none; padding: 14px 16px 12px 20px;
+  border-bottom: 1px solid var(--line); background: var(--bg-2);
+}
+.share-head h2 { margin: 0; }
+.share-close {
+  width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px;
+  background: transparent; color: var(--muted); font-size: 18px; line-height: 1;
+}
+.share-close:hover:not(:disabled) { background: var(--bg); color: var(--fg); border-color: transparent; }
+.share-body { overflow: auto; padding: 16px 20px 20px; }
+.row { display: flex; align-items: center; gap: 10px; margin: 12px 0; font-size: 13px; }
+.row input { flex: 1; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font: inherit; }
+.confirm input { flex: 0 0 110px; }
+.opts { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; font-size: 13px; }
+.warn { color: var(--warn); }
+.progress { position: relative; display: flex; align-items: center; gap: 12px;
+  margin: 14px 0; padding: 8px 12px; background: var(--bg); border-radius: 6px; font-size: 13px; }
+.progress-bar { position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--progress-fill); border-radius: 6px; transition: width .15s; }
+.progress > * { position: relative; }
+.progress-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.summary { margin: 14px 0; padding: 12px; background: var(--bg); border-radius: 8px; font-size: 13px; }
+.summary p { margin: 0 0 6px; }
+.summary details { margin-top: 8px; }
+.summary details summary { cursor: pointer; color: var(--muted); }
+.summary ul { margin: 6px 0 0; padding-left: 18px; }
+.summary ul li { margin-bottom: 2px; word-break: break-all; }
+.missing-raw { margin: 10px 0; padding: 10px 12px; border: 1px solid #e0a441;
+  border-radius: 8px; background: #e0a44122; }
+.missing-raw ul { margin: 6px 0 0; padding-left: 18px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* "还有 N 位访客在线"的确认框（规格 §5.4）。窄一些：它只有一段话和三个按钮，
+   撑到 680px 会让那段话变成一条谁都懒得读的横线。 */
+.guests-online { width: min(460px, 92vw); }
+.guests-online-msg { margin: 0; font-size: 13px; line-height: 1.7; color: var(--fg); }
+
+/* 分享面板（规格 §7.3）。风险提示是这个面板存在的理由，所以给它最显眼的
+   处理：暖色边框 + 底色，和 .picker-error 同一套配色语言，但不用错误色
+   （这不是一个错误状态，是一句必须先读到的警告）。 */
+.share-risk { margin: 0 0 14px; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid #e0a441; background: #e0a44122; font-size: 13px; line-height: 1.6; }
+.share-risk strong { display: block; color: var(--warn); margin-bottom: 2px; }
+
+.share-restart { margin: 0 0 14px; padding: 10px 14px; border-radius: 8px;
+  background: var(--bg); font-size: 13px; line-height: 1.6; }
+.share-restart p { margin: 0 0 8px; }
+.share-cmd { display: inline-block; padding: 6px 10px; border-radius: 6px;
+  background: var(--bg-2); border: 1px solid var(--line); user-select: all; }
+
+.share-net { margin-bottom: 14px; font-size: 13px; }
+.share-net h3 { font-size: 13px; margin: 0 0 8px; }
+.share-net-group { margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--bg); }
+.share-net-iface { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.share-net-addr { display: flex; align-items: center; gap: 6px; padding: 2px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.share-net-ipv6 summary { cursor: pointer; color: var(--muted); font-size: 12px;
+  font-family: inherit; margin: 4px 0; }
+
+.share-panel h3 { font-size: 14px; margin: 14px 0 8px; }
+.share-panel hr { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+
+.share-row { padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.share-row-main { display: flex; align-items: center; gap: 10px; }
+.share-row-meta { margin: 2px 0 6px; }
+.share-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.share-link-text { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-status { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--bg); }
+.share-status-active { color: var(--pick); }
+.share-status-expired { color: var(--muted); }
+.share-status-revoked { color: var(--reject); }
+.share-revoke-confirm { display: flex; align-items: center; gap: 8px; color: var(--reject); }
+
+/* 危险操作按钮（撤销分享、删除用户……）。之前只在 ExportPanel 的 move 确认
+   按钮上用过 `.primary.danger` 这个组合类名，但从没定义过对应的样式——
+   这里补上，管理后台是第一处需要它在未选中状态下也有区分度的地方
+   （撤销/删除按钮平时就混在列表里，不是只在弹出的确认框里才出现）。 */
+button.danger { border-color: var(--reject); color: var(--reject); }
+button.primary.danger { background: var(--reject); border-color: var(--reject); color: #fff; }
+
+/* 管理后台（规格 §7.4）：单页三栏——分享列表 -> 该分享的用户 -> 操作日志。
+   三栏用 flex 平分宽度，日志栏内容天然更宽（时间/操作者/昵称/动作/详情
+   五列），给它多一份 flex-grow。 */
+.admin { display: flex; gap: 16px; height: 100vh; padding: 16px; overflow: hidden; }
+.admin-col { flex: 1 1 0; min-width: 0; overflow: auto; }
+.admin-col-events { flex-grow: 1.6; }
+
+.admin-panel { display: flex; flex-direction: column; gap: 10px; }
+.admin-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-panel h2 { font-size: 14px; margin: 0; }
+
+.admin-new-share { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg); margin-bottom: 4px; }
+
+.admin-share-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.admin-share-row { display: flex; align-items: center; gap: 6px; }
+.admin-share-select { flex: 1; display: flex; flex-direction: column; align-items: flex-start;
+  gap: 2px; text-align: left; padding: 8px 10px; }
+.admin-row-selected .admin-share-select { border-color: var(--accent); background: var(--selected); }
+
+.admin-status { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--bg); }
+.admin-status-active { color: var(--pick); }
+.admin-status-expired { color: var(--muted); }
+.admin-status-revoked { color: var(--reject); }
+
+.admin-user-table, .admin-event-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-user-table th, .admin-event-table th { text-align: left; color: var(--muted);
+  font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.admin-user-table td, .admin-event-table td { padding: 6px; border-bottom: 1px solid var(--line);
+  vertical-align: top; }
+.admin-event-payload code { word-break: break-all; }
+
+.admin-event-filters { display: flex; gap: 14px; flex-wrap: wrap; }
+.admin-event-filters .row { margin: 0; }
+.admin-event-hint { font-size: 12px; line-height: 1.6; }
+
+/* 访客在电脑浏览器中输入昵称，居中表单保持适合阅读的宽度。 */
+.join-gate { max-width: 420px; margin: 14vh auto; padding: 0 24px; }
+.join-gate h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.join-gate .row { flex-direction: column; align-items: stretch; gap: 6px; margin: 20px 0 14px; }
+.join-gate .row input { width: 100%; padding: 9px 10px; font-size: 16px; }
+.join-gate button[type="submit"] { width: 100%; padding: 9px 12px; }
+/* 检查链接那一屏只有一句话，不居中的话它会孤零零地贴在左上角，
+   看起来像是页面加载失败而不是"正在检查"。 */
+.join-gate-loading { text-align: center; color: var(--muted); }
+
+/* 路由落不到任何一条入口时的占位屏（/admin 之外的未知路径）。
+   和 .blocker 一样是"这一屏没有别的出口"，所以用同一套居中排版。 */
+.route-placeholder { max-width: 520px; margin: 18vh auto; padding: 0 24px; text-align: center; }
+.route-placeholder h1 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+.route-placeholder p { margin: 0; color: var(--muted); line-height: 1.7; }
+
+/* 访客选片界面（规格 §7.2）。顶栏复用 .topbar 的排版，只换掉里面的东西：
+   没有换文件夹、没有阈值滑杆、没有导出，所以剩下的字段直接沿用 .tabs /
+   .topbar-actions 那套间距，不另起一套。 */
+.guest-loading { padding: 60px; text-align: center; color: var(--muted); }
+.guest-label { font-size: 14px; font-weight: 600; }
+.guest-me { color: var(--muted); font-size: 13px; align-self: center; }
+
+/* 只读提示不是错误，用中性的暖色而不是 --reject：被设成只读是一种正常的
+   权限安排，把它渲染得像出了故障只会让人去找摄影师问"是不是坏了"。 */
+.guest-readonly { align-self: center; font-size: 12px; padding: 3px 9px;
+  border-radius: 10px; color: var(--warn); border: 1px solid var(--warn); background: #e0a44118; }
+
+/* 在线成员条（规格 §7.5）。同一个组件挂在两个位置：本地界面里是 .app 下
+   自成一行，访客界面里是 .topbar 里的一个 flex 子项。所以基础样式只管
+   "一排色块"，自成一行时才补上内边距和分隔线。 */
+.presence { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  list-style: none; margin: 0; padding: 0; }
+.app > .presence { padding: 6px 16px; background: var(--bg-2);
+  border-bottom: 1px solid var(--line); }
+
+.presence-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
+  color: var(--muted); }
+.presence-me .presence-name { color: var(--fg); font-weight: 600; }
+/* 色块是唯一"稳定不变"的身份线索（颜色由 userId 哈希得到），所以它不能
+   跟着昵称长度变形——固定尺寸 + flex: none。 */
+.presence-dot { flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 600;
+  color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.35); }
+.presence-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presence-role { font-size: 11px; padding: 0 5px; border-radius: 8px;
+  color: var(--warn); border: 1px solid var(--warn); }
+
+/* 整页阻断层（链接失效 / 被踢 / 分享结束）。它出现的时候这一屏不再有别的
+   出口，所以居中铺满、字号放大——它不是一条提示，是这一次访问的终点。 */
+.blocker { max-width: 520px; margin: 18vh auto; padding: 0 24px; text-align: center; }
+.blocker h1 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+.blocker p { margin: 0 0 8px; line-height: 1.7; }
+.blocker-detail { font-size: 13px; }
+
+/* 已隐藏照片的单张取消隐藏入口。 */
+.thumb-actions { position: absolute; right: 6px; bottom: 28px; display: flex; gap: 4px; }
+.thumb-act { width: 26px; height: 26px; padding: 0; font-size: 13px; line-height: 1;
+             border-radius: 50%; background: rgba(0,0,0,.55); color: #fff;
+             border: 1px solid rgba(255,255,255,.35); }
+.thumb-act-pick { background: var(--pick); color: #101013; border-color: var(--pick); }
+.thumb-act-reject { background: var(--reject); color: #fff; border-color: var(--reject); }
+.thumb-compact .thumb-actions { bottom: 22px; }
+
+/* 批量操作条。框选出多张之后出现在顶栏里。 */
+.markbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+           padding: 3px 6px; border-radius: 8px;
+           background: var(--bg); border: 1px solid var(--line); }
+.markbar-count { font-size: 12px; color: var(--muted); padding: 0 4px; }
+.markbar-pick { background: var(--pick); border-color: var(--pick); color: var(--on-pick); font-weight: 600; }
+.markbar-reject { background: var(--reject); border-color: var(--reject); color: #fff; font-weight: 600; }
+
+/* 拖拽定位的提示。常驻一行，不做浮层——浮层会盖住它让你去找的那个列表。 */
+.picker-drop {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--drop-bg);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.picker-drop-error { background: rgba(220, 80, 80, .16); }
+.picker-drop-hit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.picker-drop-hit code { flex: 1 1 auto; word-break: break-all; }
+
+/* 命中的子目录。用背景色而不是边框——边框会把行高撑开，列表滚动时会跳。 */
+.dirbrowser-hit { background: rgba(120, 180, 255, .18); border-radius: 4px; }
+
+.zoom-slider { display: inline-flex; align-items: center; gap: 6px; }
+.zoom-slider input[type="range"] { width: 110px; }
+
+.zoom-slider-icon { opacity: .6; font-size: 12px; }
+
+.refresh-result {
+  border: none;
+  background: rgba(120, 180, 255, .18);
+  color: inherit;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ↩ 比 ✓/✕ 视觉上轻一点，稍微放大补回来。 */
+.thumb-act-unhide { font-size: 15px; }
+/* 隐藏和「取消标记」之间留一道缝：它俩长得一样，而隐藏是唯一一个会让照片
+   从眼前消失的按钮，挨着放最容易点错。 */
+.markbar-hide { margin-left: 4px; }
+
+/* 成员条：点头像按人筛选（仅管理员）。按钮本身不带外观，视觉全在 li 上——
+   访客那侧渲染的是同样的 li、里面没有按钮，两边长得一模一样。 */
+.presence-btn { display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; padding: 0; margin: 0;
+  cursor: pointer; color: inherit; font: inherit; }
+/* 离线：整体压暗 + 头像去饱和。不换成灰色纯色块——颜色是按 userId 派生的
+   身份标识，换掉颜色等于换了个人。 */
+.presence-off { opacity: .5; }
+.presence-off .presence-dot { filter: grayscale(.6); }
+/* 正在按他筛选：描一圈。比换背景色更不容易和「在线」那个状态混淆。 */
+.presence-active { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 999px; }

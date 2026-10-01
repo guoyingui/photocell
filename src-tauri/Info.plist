@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>PhotoCull 需要访问你选择的照片文件夹，才能浏览、标记和导出。</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>PhotoCull 需要访问你选择的照片文件夹，才能浏览、标记和导出。</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>PhotoCull 需要访问你选择的照片文件夹，才能浏览、标记和导出。</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>PhotoCull 需要读取相机存储卡、U 盘或移动硬盘上的照片。</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>PhotoCull 需要读取网络驱动器上的照片文件夹。</string>
+  <key>NSFileProviderDomainUsageDescription</key>
+  <string>PhotoCull 需要读取你选择的照片文件夹。</string>
+</dict>
+</plist>

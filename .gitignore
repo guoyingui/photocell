@@ -1,0 +1,15 @@
+node_modules/
+server/public/
+.DS_Store
+*.log
+.photocull/
+.superpowers/
+
+# 部署产物（deploy/build-linux.sh 生成，11 MB 上下，不进版本库）
+deploy/dist/
+
+# 桌面打包的按平台运行时（scripts/stage-desktop.mjs 生成）
+src-tauri/binaries/
+src-tauri/resources/
+src-tauri/.cache/
+src-tauri/target/

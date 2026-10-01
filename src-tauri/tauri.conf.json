@@ -1,0 +1,70 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "PhotoCull",
+  "version": "1.0.1",
+  "identifier": "com.photocull.desktop",
+  "build": {
+    "frontendDist": "../desktop/splash",
+    "beforeDevCommand": "node scripts/stage-desktop.mjs --sidecar-only",
+    "beforeBuildCommand": "node scripts/stage-desktop.mjs"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "PhotoCull",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "maximizable": false,
+        "minimizable": false,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "nsis"],
+    "category": "Photography",
+    "shortDescription": "摄影师选图程序",
+    "longDescription": "选定装有 RAW+JPG 配对照片的文件夹，快速浏览、收藏、排除，最后把收藏照片的 RAW 单独复制或移动到交付目录。",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "resources/app.tar.gz": "app.tar.gz"
+    },
+    "externalBin": ["binaries/photocull-node"],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "exceptionDomain": "127.0.0.1",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 }
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "photocull",
+  "version": "1.0.1",
+  "description": "",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:server": "node --watch server/index.js",
+    "dev:web": "vite",
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev:server\" \"npm run dev:web\"",
+    "build": "vite build",
+    "start": "npm run build && node server/index.js",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:stage": "node scripts/stage-desktop.mjs",
+    "desktop:build": "tauri build",
+    "desktop:build:mac": "tauri build --bundles dmg,app",
+    "desktop:build:win": "tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.14.8",
+    "exifr": "^7.1.3",
+    "express": "^5.2.1",
+    "open": "^11.0.0",
+    "p-limit": "^7.3.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sharp": "^0.35.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "concurrently": "^10.0.4",
+    "jsdom": "^26.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

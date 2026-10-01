@@ -1,0 +1,62 @@
+# PhotoCull 反向代理示例。放到 /etc/nginx/sites-available/photocull 再软链到
+# sites-enabled/，或者按你的发行版惯例来。
+#
+# ⚠️ 用这份配置之前，先确认 PhotoCull 是带 --admin-token 起的。
+#
+# 同机反代时，转发过去的每一个请求源地址都是 127.0.0.1，而 PhotoCull 默认
+# "回环即管理员"——不配令牌的话，每一个访客都会拿到管理员身份，能浏览你整块
+# 硬盘、能触发导出、能在移动模式下删你的 RAW。
+#
+# 现有两条防护（server/lib/actor.js）：
+#   1. 配了 --admin-token 之后，回环本身不再算管理员，只有带对令牌的才算。
+#   2. 请求带任何转发头时，一律不给回环管理员身份。
+# 第 2 条靠的是代理的自觉——一个被显式配成不加转发头的同机代理，转发进来的请求
+# 跟你本机点开的没有任何区别。所以第 1 条是必须项。
+
+server {
+    listen 80;
+    server_name pick.example.com;
+    # 令牌会在 URL 里传一次（/admin-login?token=…、分享链接），明文 HTTP 等于
+    # 把它们摊开在链路上。一律跳 HTTPS。
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name pick.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/pick.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pick.example.com/privkey.pem;
+
+    # 原图和导出包都可能很大，别让 nginx 拦腰截断
+    client_max_body_size 0;
+    proxy_read_timeout   3600s;
+    proxy_send_timeout   3600s;
+
+    # 令牌不要进访问日志。$request 里带着 ?token=…，日志文件通常是 644，
+    # 而且会被 logrotate 一直留着。
+    map $request_uri $loggable {
+        ~*token=  0;
+        default   1;
+    }
+    access_log /var/log/nginx/photocull.access.log combined if=$loggable;
+
+    location / {
+        # 端口会漂移：5183 被占就依次往后试到 5199。装完用
+        # `sudo ss -lntp | grep node` 确认真实端口，别想当然。
+        proxy_pass http://127.0.0.1:5183;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE 必须关缓冲。扫描进度、烘焙进度、别人的选片标记全走这条流，
+        # 缓冲一开整条流会被攒住，界面看起来就是"卡死不动"。
+        proxy_buffering off;
+        proxy_cache     off;
+        chunked_transfer_encoding off;
+    }
+}

@@ -1,0 +1,36 @@
+[Unit]
+Description=PhotoCull 选片服务
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+EnvironmentFile=/etc/photocull.env
+Environment=NODE_ENV=production
+
+# 用 /bin/sh -c 是因为 systemd 的 ExecStart 不做变量展开，而令牌不能写死在这个
+# 文件里（/etc/systemd/system/ 默认全局可读）。代价：令牌会短暂出现在该进程的
+# 命令行里，同机其它账号 ps 得到。单租户机器可以接受；多人共用的机器请改用
+# SSH 隧道那种形态（见 docs/部署到-Linux.md 第 5 节形态 A），别开 --share。
+#
+# --admin-token 在这里不是可选项：配了它之后回环本身不再算管理员，
+# 这是同机反向代理场景下唯一不依赖"代理有没有加转发头"的那道防护。
+ExecStart=/bin/sh -c 'exec /usr/bin/node server/index.js --share --admin-token="$PHOTOCULL_ADMIN_TOKEN"'
+
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# 一点最基本的收敛。ReadWritePaths 要覆盖两处：家目录（~/.photocull/ 放分享
+# 索引和审计日志）和照片所在的挂载点（marks.json 是写在照片文件夹里的）。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
