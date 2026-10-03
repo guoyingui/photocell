@@ -301,6 +301,7 @@ describe('SSE 广播', () => {
   });
 
   it('清除标记时 changes 里的 mark 是 null', async () => {
+    await putMarks('editor', { A: null });
     const sink = await stream('admin');
     await putMarks('admin', { A: 'pick' });
     await waitFor(sink, isMarks);
@@ -309,6 +310,17 @@ describe('SSE 广播', () => {
     await putMarks('admin', { A: null });
     const event = await waitFor(sink, isMarks);
     expect(event.changes.A.mark).toBeNull();
+  });
+
+  it('清除自己的标记后仍有其他人的意见时，广播有效标记和各自票的变化', async () => {
+    await putMarks('editor', { A: 'pick' });
+    await putMarks('admin', { A: 'reject' });
+    const sink = await stream('admin');
+    await putMarks('admin', { A: null });
+    const event = await waitFor(sink, isMarks);
+    expect(event.changes.A.mark).toBe('pick');
+    expect(event.changes.A.by).not.toBe('admin');
+    expect(event.contribChanges.A).toMatchObject({ by: 'admin', mark: null });
   });
 
   it('seq 在同一个会话里严格递增', async () => {

@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { getJSON } from './api';
 import { useMarks } from '../store/marks';
+import { useReview } from '../store/review';
+import { useSelection } from '../store/selection';
+import { useAnnotations } from '../store/annotations';
+import { invalidateThumbCache } from './thumbSource';
 import type { MarkBy } from '../store/marks';
 import { actorId, setSession, useSession } from '../store/session';
 import type { OnlineUser, Role } from '../store/session';
@@ -117,10 +121,55 @@ function applyRoleChange(event: { userId?: unknown; role?: unknown }) {
  */
 export function handleRealtimeEvent(event: any): boolean {
   switch (event?.type) {
+    case 'cache-cleared':
+      if (!useRealtime.getState().blocked) invalidateThumbCache();
+      return true;
+    case 'annotations':
+      if (!useRealtime.getState().blocked) useAnnotations.getState().remote(event);
+      return true;
+    case 'final-marks': {
+      if (useRealtime.getState().blocked) return true;
+      if (typeof event.finalRevision === 'number' && event.finalRevision < useMarks.getState().finalRevision) return true;
+      const changes: Record<string, Mark | null> = {}, meta: Record<string, MarkBy> = {};
+      for (const [id, value] of Object.entries(event.changes ?? {}) as [string, any][]) {
+        if (!value || ![null, 'pick', 'reject'].includes(value.mark)) continue;
+        changes[id] = value.mark;
+        if (typeof value.by === 'string' && typeof value.at === 'number') meta[id] = { by: value.by, at: value.at };
+      }
+      useMarks.getState().applyFinal(event.finalMarks, changes, meta, event.finalRevision);
+      useMarks.getState().applyRemoteHidden(event.hidden);
+      return true;
+    }
+    case 'selection':
+      if (!useRealtime.getState().blocked && event.selection?.userId) useSelection.getState().remote(event.selection);
+      return true;
+    case 'selection-policy':
+      if (!useRealtime.getState().blocked) void useSelection.getState().reload();
+      return true;
+    case 'selection-updated':
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('photocull-selection-updated'));
+      return true;
+    case 'review':
+      if (!useRealtime.getState().blocked && Array.isArray(event.ids) && typeof event.seen === 'boolean') {
+        useReview.getState().remote(event.ids.filter((id: unknown) => typeof id === 'string'), event.seen);
+      }
+      return true;
     case 'marks':
       // 已经被阻断之后不再合并任何东西：界面已经换成阻断层，改背后那份
       // 看不见的状态没有意义，只会让"被踢之后仍在跟着别人动"这件事成立。
-      if (!useRealtime.getState().blocked) applyMarksBroadcast(event);
+      if (!useRealtime.getState().blocked) {
+        applyMarksBroadcast(event);
+        if (useSession.getState().kind === 'admin') useMarks.getState().applyRemoteContrib(event.contribChanges);
+        else {
+          const self = actorId();
+          const own = event.ownContribChanges;
+          if (self && own && typeof own === 'object' && !Array.isArray(own)) {
+            useMarks.getState().applyRemoteContrib(Object.fromEntries(Object.entries(own)
+              .filter(([, vote]) => vote && typeof vote === 'object')
+              .map(([id, vote]) => [id, { ...(vote as object), by: self }])));
+          }
+        }
+      }
       return true;
 
     case 'presence':
@@ -166,13 +215,13 @@ function reasonOf(event: { reason?: unknown }): string | null {
 export async function refetchMarks(): Promise<void> {
   if (useRealtime.getState().blocked) return;
   try {
-    const res = await getJSON<{ marks: Record<string, Mark>; marksMeta?: unknown; hidden?: unknown }>(
+    const res = await getJSON<{ marks: Record<string, Mark>; marksMeta?: unknown; hidden?: unknown; contrib?: unknown; ownContrib?: unknown; finalMarks?: unknown; finalRevision?: number }>(
       '/api/library/marks');
     // 等待期间可能刚好被踢/分享结束，那时这份数据已经没有落地的意义。
     if (useRealtime.getState().blocked) return;
     // 归属跟着一起收敛：断开期间别人改过的那些片，标记补回来了而角标还停在
     // 上一个人身上的话，这份"谁选的"就成了一份越用越旧的假消息。
-    useMarks.getState().reconcile(res.marks ?? {}, res.marksMeta);
+    useMarks.getState().reconcile(res.marks ?? {}, res.marksMeta, res.contrib, res.finalMarks, res.finalRevision, res.ownContrib);
     // hidden 同理：断开期间别人隐藏/取消隐藏的那些，不补拉就会一直显示旧的一份。
     useMarks.getState().applyRemoteHidden(res.hidden);
   } catch { /* 见上：补拉失败是后台的事，不打扰用户 */ }
@@ -194,6 +243,9 @@ export function createReconnectRefetch(): () => void {
   return () => {
     if (!opened) { opened = true; return; }
     void refetchMarks();
+    void useReview.getState().reload();
+    void useSelection.getState().reload();
+    void useAnnotations.getState().reload();
   };
 }
 

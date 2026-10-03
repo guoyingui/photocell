@@ -52,6 +52,21 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('规则 1 —— 忽略自己发出的回声', () => {
+  it('同一客户其他页面的意见变更可同步，最终决定和其他成员的意见仍然分开', async () => {
+    setSession({ kind: 'user', user: { id: 'u_me', nickname: '我', role: 'editor' } });
+    useMarks.getState().load({ A: 'pick' }, {}, [], undefined, { A: { mark: 'pick', at: 1 } }, 1, {});
+    handleRealtimeEvent({ type: 'marks', origin: 'u_me', changes: {},
+      ownContribChanges: { A: { mark: 'reject', at: 2 } } });
+    expect(useMarks.getState().contrib.A).toEqual({ u_me: { mark: 'reject', at: 2 } });
+    expect(marks().A).toBe('pick');
+    apiMock.getJSON.mockResolvedValue({ marks: { A: 'pick' }, finalMarks: { A: { mark: 'pick', at: 1 } },
+      finalRevision: 1, ownContrib: { A: { mark: 'reject', at: 2 } }, hidden: [] });
+    await refetchMarks();
+    useMarks.getState().setMark(['A'], 'pick'); await flush();
+    useMarks.getState().undo();
+    expect(apiMock.putJSON).toHaveBeenLastCalledWith('/api/library/marks', { marks: { A: 'reject' } });
+    await flush();
+  });
   function broadcast(origin: string, id: string, mark: string | null) {
     return { type: 'marks', origin, seq: 1, changes: { [id]: { mark, by: origin, at: 1 } } };
   }

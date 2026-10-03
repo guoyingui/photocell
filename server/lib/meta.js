@@ -1,6 +1,7 @@
 import path from 'node:path';
 import exifr from 'exifr';
 import pLimit from 'p-limit';
+import { assertWithin } from './safepath.js';
 
 const EXIF_PICK = [
   'DateTimeOriginal', 'SubSecTimeOriginal', 'CreateDate', 'Orientation',
@@ -56,7 +57,7 @@ export function normalizeMeta(raw, fallbackMtimeMs, dir) {
 
 /**
  * 并发读取全部资产的元数据。只解析 EXIF 段，不解码像素。
- * 没有 JPG 的资产直接退化到 mtime。
+ * 优先 JPG，纯 RAW 尝试读取容器的 EXIF；无法读取时退化到 mtime。
  */
 export async function readAllMeta(root, assets, { concurrency = 8, onBatch } = {}) {
   const limit = pLimit(concurrency);
@@ -65,12 +66,17 @@ export async function readAllMeta(root, assets, { concurrency = 8, onBatch } = {
 
   await Promise.all(assets.map((asset, i) => limit(async () => {
     let raw = null;
-    if (asset.jpg) {
-      const abs = path.join(root, ...asset.dir.split('/').filter(Boolean), asset.jpg);
+    const filename = asset.jpg ?? asset.raws?.[0];
+    if (filename) {
+      const reader = new exifr.Exifr({ pick: EXIF_PICK, translateValues: false });
       try {
-        raw = await exifr.parse(abs, { pick: EXIF_PICK, translateValues: false });
+        const abs = await assertWithin([root], path.join(root, ...asset.dir.split('/').filter(Boolean), filename));
+        await reader.read(abs);
+        raw = await reader.parse();
       } catch {
         raw = null; // 损坏或无 EXIF：静默退化，不阻断整场扫描
+      } finally {
+        await reader.file?.close?.();
       }
     }
     // 兜底时间源：有 JPG 就用 JPG 的 mtime，没有 JPG（孤儿 RAW）就用扫描时记下的

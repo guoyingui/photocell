@@ -6,6 +6,9 @@ import { useMarks } from '../store/marks';
 import { useSession } from '../store/session';
 import type { SessionState } from '../store/session';
 import { useView } from '../store/view';
+import { useReview } from '../store/review';
+import { useAnnotations } from '../store/annotations';
+import { LABELS, STAGES } from '../../../shared/annotations.js';
 import { avatarColor, avatarInitial } from '../lib/avatar';
 import type { Asset } from '../types';
 
@@ -64,6 +67,8 @@ export function Thumb({ asset, priority, visible, compact, order }: Props) {
   const toggleSelect = useView((s) => s.toggleSelect);
   const canHide = useSession((s) => s.canHide());
   const inHiddenTab = useView((s) => s.tab === 'hidden');
+  const seen = useReview((s) => s.reviewed.has(asset.id));
+  const annotation = useAnnotations((s) => s.annotations[asset.id]);
 
   const imgRef = useRef<HTMLImageElement>(null);
   const [decoded, setDecoded] = useState(false);
@@ -105,6 +110,10 @@ export function Thumb({ asset, priority, visible, compact, order }: Props) {
         : <div className={failed ? 'thumb-failed' : 'thumb-skeleton'}>{failed ? '无法预览' : ''}</div>}
 
       <figcaption>{asset.stem}</figcaption>
+      {annotation && (annotation.rating > 0 || annotation.stage !== 'initial' || annotation.label !== 'none') &&
+        <span className="thumb-workflow" data-label={annotation.label} title={`${LABELS[annotation.label]} · ${STAGES[annotation.stage]}`}>
+          {annotation.rating > 0 && '★'.repeat(annotation.rating)} {annotation.stage !== 'initial' ? STAGES[annotation.stage] : LABELS[annotation.label]}</span>}
+      {seen && <span className="thumb-seen" title="已看过">已看</span>}
 
       {/* 「已隐藏」视图里格子上只留取消隐藏。收藏/排除改走键盘和顶栏批量按钮，
           不再盖在缩略图上。 */}
@@ -137,7 +146,7 @@ export function Thumb({ asset, priority, visible, compact, order }: Props) {
       {mark === 'pick' && <span className="badge badge-pick" role="img" aria-label="已收藏" title="已收藏">★</span>}
       {mark === 'reject' && <span className="badge badge-reject" role="img" aria-label="已排除" title="已排除">✕</span>}
       {asset.raws.length === 0 && <span className="badge badge-warn" title="没有 RAW 文件">无 RAW</span>}
-      {asset.jpg === null && <span className="badge badge-warn" title="没有 JPG 预览">无 JPG</span>}
+      {asset.jpg === null && <span className="badge badge-warn" title="纯 RAW，尝试内嵌 JPEG 预览">纯 RAW</span>}
     </figure>
   );
 }

@@ -30,11 +30,19 @@ export function resolveExportScope(assets, data, scope = { kind: 'all' }) {
       }
     }
     if (scope.kind === 'filtered') {
+      if (scope.assetIds !== undefined) {
+        const known = new Set(assets.map((asset) => asset.id));
+        if (!Array.isArray(scope.assetIds) || scope.assetIds.some((id) => typeof id !== 'string' || !known.has(id))) {
+          fail('筛选结果已变化，请刷新后重新导出');
+        }
+        const ids = new Set(scope.assetIds);
+        scoped = scoped.filter((asset) => ids.has(asset.id));
+      }
       const { dir = null, tab = 'all' } = scope;
       if (dir !== null && typeof dir !== 'string') fail('文件夹筛选无效，请重新选择');
       if (!['all', 'pick', 'reject', 'none', 'hidden'].includes(tab)) fail('照片筛选无效，请重新选择');
       const hidden = new Set(data.hidden ?? []);
-      scoped = assets.filter((asset) => {
+      scoped = scoped.filter((asset) => {
         if (dir !== null && asset.dir !== dir) return false;
         if (tab === 'hidden') return hidden.has(asset.id);
         if (hidden.has(asset.id)) return false;

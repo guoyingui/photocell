@@ -46,7 +46,7 @@ export function withSid(url: string): string {
 let onSessionGone: (() => void) | null = null;
 export function setSessionGoneHandler(fn: (() => void) | null) { onSessionGone = fn; }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function request(path: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string> | undefined) };
   if (sessionId) headers['X-PhotoCull-Session'] = sessionId;
 
@@ -70,7 +70,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 409 && err.code === 'session-gone') onSessionGone?.();
     throw err;
   }
-  return res.json() as Promise<T>;
+  return res;
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await request(path, init)).json() as Promise<T>;
 }
 
 const jsonInit = (method: string, body: unknown): RequestInit => ({
@@ -86,6 +90,8 @@ export const patchJSON = <T,>(path: string, body: unknown = {}) => req<T>(path, 
 // DELETE 不带请求体，因此也不设 content-type——带一个空 body 的 content-type
 // 只会让某些代理和中间件去解析一段不存在的负载。
 export const deleteJSON = <T,>(path: string) => req<T>(path, { method: 'DELETE' });
+export const postBlob = async (path: string, body: unknown): Promise<Blob> =>
+  (await request(path, jsonInit('POST', body))).blob();
 
 /**
  * 订阅 SSE，返回取消订阅函数。

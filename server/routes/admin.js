@@ -1,7 +1,7 @@
 import express from 'express';
 import { requireAdmin } from '../middleware/auth.js';
 import { assertWithin } from '../lib/safepath.js';
-import { browseRoots, getSession, getSessionByRoot } from '../lib/session.js';
+import { browseRoots, emitPerListener, getSession, getSessionByRoot } from '../lib/session.js';
 import {
   createShare, getShareById, listShares, revokeShare, updateShare,
 } from '../lib/shares.js';
@@ -81,6 +81,7 @@ function publicShare(share, extra = {}) {
     // （Task 20）**完全一致**，否则会出现「管理台显示公开、访客实际看不到」
     // 这种查都没法查的分歧——和 publicUser 的 disabled 是同一条理由。
     showPeerMarks: share.showPeerMarks !== false,
+    selectionLimit: share.selectionLimit ?? null,
     ...extra,
   };
 }
@@ -165,6 +166,12 @@ const SHARE_FIELD_CHECKS = {
   allowUserCreation: (v) => checkBoolean('allowUserCreation', v),
   maxUsers: (v) => checkMaxUsers(v),
   showPeerMarks: (v) => checkBoolean('showPeerMarks', v),
+  selectionLimit: (v) => {
+    if (v !== null && (!Number.isInteger(v) || v < 1 || v > 10000)) {
+      throw new BadField('selectionLimit', '选片上限必须是 1–10000 的整数，或 null 表示不限');
+    }
+    return v;
+  },
 };
 
 /** 从请求体里挑出**显式给了的**分享字段并逐个校验，其余一概忽略。 */
@@ -305,6 +312,7 @@ adminRouter.post('/shares', async (req, res, next) => {
       // 这是条影响客户之间能看见什么的设置，建分享时就该在日志里留下口径，
       // 否则日后只能看到它被 PATCH 改成了什么，看不出它一开始是什么。
       showPeerMarks: share.showPeerMarks,
+      selectionLimit: share.selectionLimit,
     });
     return res.json({ share: publicShare(share, await shareStats(share)) });
   } catch (err) { return next(err); }
@@ -343,6 +351,11 @@ adminRouter.patch('/shares/:id', async (req, res, next) => {
     // 该分享每个在线访客都会白重拉一次标记，而屏幕上什么都不会变。
     if (Object.prototype.hasOwnProperty.call(to, 'showPeerMarks')) {
       notifyPeerMarks(updated.id, updated.showPeerMarks !== false);
+    }
+    if (Object.prototype.hasOwnProperty.call(to, 'selectionLimit')) {
+      const session = getSessionByRoot(updated.root);
+      if (session) emitPerListener(session, (listener) => listener.actor.kind === 'user'
+        && listener.actor.share.id === updated.id ? { type: 'selection-policy' } : null);
     }
     return res.json({ share: publicShare(updated, await shareStats(updated)) });
   } catch (err) {

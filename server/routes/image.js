@@ -1,8 +1,9 @@
 import express from 'express';
-import path from 'node:path';
+import sharp from 'sharp';
 import { requireSession } from './library.js';
 import { requirePerm } from '../middleware/auth.js';
 import { getThumb, PLACEHOLDER_SVG } from '../lib/thumbs.js';
+import { previewSource } from '../lib/rawPreview.js';
 
 export const imageRouter = express.Router();
 
@@ -46,18 +47,29 @@ imageRouter.get('/thumb', requirePerm('read'), requireSession, async (req, res, 
   } catch (err) { next(err); }
 });
 
-imageRouter.get('/original', requirePerm('read'), requireSession, (req, res, next) => {
+imageRouter.get('/original', requirePerm('read'), requireSession, async (req, res, next) => {
   try {
     const session = req.session;
     const asset = session.byId.get(String(req.query.id ?? ''));
-    if (!asset || !asset.jpg) return res.status(404).json({ error: '该资产没有 JPG' });
-
-    const abs = path.join(session.root, ...asset.dir.split('/').filter(Boolean), asset.jpg);
+    if (!asset) return res.status(404).json({ error: '未知资产' });
+    const source = await previewSource(session.root, asset);
     res.set({
       'Content-Type': 'image/jpeg',
-      ETag: `"${asset.jpgMtimeMs}-${asset.jpgSize}"`,
+      ETag: `"${source.key}"`,
       'Cache-Control': 'private, max-age=3600',
     });
-    res.sendFile(abs, ALLOW_DOTFILES);   // sendFile 自带 Range 支持；root 路径本身若含点号目录也不会被误 404
+    res.sendFile(source.file, ALLOW_DOTFILES);   // sendFile 自带 Range 支持
   } catch (err) { next(err); }
+});
+
+imageRouter.get('/preview-info', requirePerm('read'), requireSession, async (req, res, next) => {
+  const asset = req.session.byId.get(String(req.query.id ?? ''));
+  if (!asset) return res.status(404).json({ error: '未知资产' });
+  try {
+    const source = await previewSource(req.session.root, asset), meta = await sharp(source.file).metadata();
+    res.json({ kind: source.kind, width: meta.width, height: meta.height });
+  } catch (err) {
+    if (err.status === 403) return next(err);
+    res.json({ kind: 'unavailable', message: err.message });
+  }
 });

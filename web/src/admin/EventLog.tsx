@@ -22,6 +22,8 @@ const ACTIONS = [
   'session.connect', 'session.disconnect',
   'mark.set', 'mark.bulk',
   'settings.update', 'export.run',
+  'selection.submit', 'selection.confirm', 'selection.reopen', 'selection.final',
+  'annotations.update', 'export.xmp',
 ];
 
 /** CSV/表格「详情」列要排除的固定列，与 server/lib/audit.js 的 eventsToCsv 保持一致。 */

@@ -1,7 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { clampScale, clampPan, zoomAt, ZOOM_MIN, ZOOM_MAX, FIT } from './lightboxZoom';
+import { clampScale, clampPan, fitImage, zoomAt, ZOOM_MIN, ZOOM_MAX, FIT } from './lightboxZoom';
 
 const viewport = { w: 1000, h: 800 };
+
+describe('按原始像素查看', () => {
+  it('横图、竖图和小图的 100% 都回到原始尺寸', () => {
+    for (const image of [{ w: 6000, h: 4000 }, { w: 4000, h: 6000 }, { w: 640, h: 480 }]) {
+      const fitted = fitImage(image, viewport);
+      expect(fitted.w / fitted.ratio).toBeCloseTo(image.w);
+      expect(fitted.h / fitted.ratio).toBeCloseTo(image.h);
+      expect(fitted.w).toBeLessThanOrEqual(viewport.w);
+      expect(fitted.h).toBeLessThanOrEqual(viewport.h);
+    }
+  });
+  it('横图尚未超出窗口高度时不能纵向拖离画面', () => {
+    expect(clampPan({ x: 9999, y: 9999 }, 1.2, viewport, { w: 1000, h: 400 }))
+      .toEqual({ x: 100, y: 0 });
+  });
+});
 
 describe('clampScale', () => {
   it('钳制在 0.5 到 8 之间', () => {

@@ -11,6 +11,9 @@ import { MarkBar } from './MarkBar';
 import { CompareButton } from './CompareButton';
 import { HistoryButtons } from './HistoryButtons';
 import { ThemeToggle } from './ThemeToggle';
+import { SettingsPanel } from './SettingsPanel';
+import { SelectionsPanel } from './SelectionsPanel';
+import { usePhotoFilterAssets } from '../lib/usePhotoFilters';
 
 const TABS: { key: FilterTab; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -36,7 +39,8 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
   // 高频操作都会白白触发一次 TopBar 重渲染，并连带把下面 4×filterAssets 的
   // 计数重新跑一遍。
   const root = useLibrary((s) => s.root);
-  const assets = useLibrary((s) => s.assets);
+  const assets = usePhotoFilterAssets();
+  const assetCount = useLibrary((s) => s.assets.length);
   const metas = useLibrary((s) => s.metas);
   const bake = useLibrary((s) => s.bake);
   const streamError = useLibrary((s) => s.streamError);
@@ -65,6 +69,8 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
   // 特有的入口，App.tsx 不需要知道它开着还是关着，就像 ExportPanel 那样
   // 用一个本地 state 就够了，不需要提到父组件。
   const [shareOpen, setShareOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectionsOpen, setSelectionsOpen] = useState(false);
 
   // 四个 tab 的计数只取决于 assets/marks/dirFilter，和当前选中哪个 tab、
   // 光标在哪、有没有展开连拍组都无关——记忆化后，光标移动/框选/展开收起
@@ -92,7 +98,7 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
       ?? online.find((u) => u.id === clientFilter)?.nickname
       ?? '这个人');
 
-  const baking = bake.total > 0 && bake.done < bake.total;
+  const baking = bake.running && bake.total > 0 && bake.done < bake.total;
 
   return (
     <header className="topbar">
@@ -100,7 +106,7 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
 
       {/* 刷新不退回选择器：旧网格继续显示到扫完。这是它和「换文件夹」
           最重要的区别，也是「选片过程中照片被移动或删除」这个场景要的东西。 */}
-      {/* 只读时整个按钮不渲染，理由同下面的「多选」：刷新是 admin-only
+      {/* 只读时整个按钮不渲染：刷新是 admin-only
           （服务端已经是 requireAdmin），这里是前端第二道防线，置灰不行——
           访客的顶栏不该看到这个按钮存在过。 */}
       {canWrite && (
@@ -123,10 +129,11 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
 
       <CompareButton order={order} />
       <HistoryButtons />
+      <button onClick={() => useView.getState().toggleInfo()}>照片信息（I）</button>
       <MarkBar />
 
       <span className="muted">
-        {metas.size < assets.length ? `读取元数据 ${metas.size}/${assets.length}` : ''}
+        {metas.size < assetCount ? `读取元数据 ${metas.size}/${assetCount}` : ''}
         {baking ? ` 缓存 ${bake.done}/${bake.total}` : ''}
       </span>
 
@@ -147,11 +154,15 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
           容易和"导出"打架的 auto margin。 */}
       <div className="topbar-actions">
         <ThemeToggle />
+        <button onClick={() => setSettingsOpen(true)}>设置…</button>
+        <button onClick={() => setSelectionsOpen(true)}>客户提交…</button>
         <button className="btn-share" onClick={() => setShareOpen(true)}>分享…</button>
         <button className="primary" onClick={onExport}>导出…</button>
       </div>
 
       <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} />
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {selectionsOpen && <SelectionsPanel onClose={() => setSelectionsOpen(false)} />}
 
       {closeBlocked && (
         <GuestsOnlineConfirm

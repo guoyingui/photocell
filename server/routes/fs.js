@@ -5,8 +5,23 @@ import path from 'node:path';
 import { assertWithin } from '../lib/safepath.js';
 import { browseRoots } from '../lib/session.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { isLoopback } from '../lib/actor.js';
+import { nativeFolderCapability, chooseNativeFolder } from '../lib/nativeFolder.js';
 
 export const fsRouter = express.Router();
+
+fsRouter.get('/native-folder', requireAdmin, async (req, res, next) => {
+  try { res.json({ available: isLoopback(req) && Boolean(await nativeFolderCapability()) }); }
+  catch (err) { next(err); }
+});
+fsRouter.post('/native-folder', requireAdmin, async (req, res, next) => {
+  if (!isLoopback(req)) return res.status(403).json({ error: 'local-only', message: '请在运行 PhotoCull 的电脑上打开系统文件夹窗口' });
+  if (req.body?.open !== true) return res.status(400).json({ error: '请通过系统选择文件夹按钮打开窗口' });
+  try {
+    const selected = await chooseNativeFolder();
+    res.json({ path: selected ? await assertWithin(await browseRoots(), selected) : null });
+  } catch (err) { next(err); }
+});
 
 /**
  * 这三条路由全部 requireAdmin，没有例外。

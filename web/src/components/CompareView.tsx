@@ -4,6 +4,7 @@ import { useMarks } from '../store/marks';
 import { useSession } from '../store/session';
 import { applyMark } from '../lib/applyMark';
 import { originalUrl, thumbUrl } from '../lib/thumbSource';
+import { usePreviewCache } from '../store/previewCache';
 import { clampPan, zoomAt, type ZoomState } from '../lib/lightboxZoom';
 import type { Asset, Mark } from '../types';
 
@@ -11,6 +12,7 @@ const FIT: ZoomState = { scale: 1, pan: { x: 0, y: 0 } };
 
 /** 两侧共享相对视口的缩放与平移，换候选时保留当前比较位置。 */
 export function CompareView({ order, byId }: { order: string[]; byId: Map<string, Asset> }) {
+  usePreviewCache((state) => state.version);
   const comparison = useView((s) => s.compare);
   const close = useView((s) => s.closeCompare);
   const open = useView((s) => s.openCompare);
@@ -88,7 +90,8 @@ export function CompareView({ order, byId }: { order: string[]; byId: Map<string
         </section>;
       })}
     </div>
-    <footer className="compare-footer">同步缩放 {zoom.scale.toFixed(1)}× · ← → 更换候选 · P 收藏候选 · X 排除候选 · U 取消标记</footer>
+    <footer className="compare-footer">同步缩放 {zoom.scale.toFixed(1)}× · ← → 更换候选
+      {canWrite && ' · P 收藏候选 · X 排除候选 · U 取消标记'}</footer>
   </div>;
 }
 
@@ -137,7 +140,7 @@ function CompareStage({ asset, zoom, setZoom }: {
     }}
     onPointerUp={() => { drag.current = null; }}
     onPointerCancel={() => { drag.current = null; }}>
-    {!asset.jpg || failed ? <p className="muted">这张照片没有可用的 JPG 预览</p>
+    {failed ? <p className="muted">这张照片没有可用的预览；纯 RAW 需要内嵌 JPEG</p>
       : <div className="compare-image" style={{
         transform: `translate(${zoom.pan.x * 100}%, ${zoom.pan.y * 100}%) scale(${zoom.scale})`,
       }}><img src={zoom.scale > 1 ? originalUrl(asset.id) : thumbUrl(asset.id, 'preview')}

@@ -734,6 +734,37 @@ describe('hidden 的并发写入', () => {
 describe('contrib', () => {
   const at = 1;
 
+  afterEach(() => { setSession({ kind: 'none', user: null, share: null, online: [] }); });
+
+  it('客户重新打开后，撤销和重做恢复自己的原始意见，保留摄影师最终决定', async () => {
+    setSession({ kind: 'user', user: { id: 'u_me', nickname: '客户', role: 'editor' } });
+    useMarks.getState().load({ A: 'pick' }, {}, [], undefined, { A: { mark: 'pick', at: 2 } }, 1,
+      { A: { mark: 'reject', at: 1 } });
+    useMarks.getState().setMark(['A'], 'pick');
+    await vi.waitFor(() => expect(useMarks.getState().pendingCount).toBe(0));
+    useMarks.getState().undo();
+    expect(JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string).marks).toEqual({ A: 'reject' });
+    expect(useMarks.getState().contrib.A?.u_me?.mark).toBe('reject');
+    expect(marks().A).toBe('pick');
+    await vi.waitFor(() => expect(useMarks.getState().pendingCount).toBe(0));
+    useMarks.getState().redo();
+    expect(JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string).marks).toEqual({ A: 'pick' });
+    expect(useMarks.getState().contrib.A?.u_me?.mark).toBe('pick');
+    await vi.waitFor(() => expect(useMarks.getState().pendingCount).toBe(0));
+  });
+
+  it('自己没有投票时，撤销会清除自己的一票，不把最终决定误存成原始意见', async () => {
+    setSession({ kind: 'user', user: { id: 'u_me', nickname: '客户', role: 'editor' } });
+    useMarks.getState().load({ A: 'pick' }, {}, [], undefined, { A: { mark: 'pick', at: 2 } }, 1, {});
+    useMarks.getState().setMark(['A'], 'reject');
+    await vi.waitFor(() => expect(useMarks.getState().pendingCount).toBe(0));
+    useMarks.getState().undo();
+    expect(JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string).marks).toEqual({ A: null });
+    expect(useMarks.getState().contrib.A).toBeUndefined();
+    expect(marks().A).toBe('pick');
+    await vi.waitFor(() => expect(useMarks.getState().pendingCount).toBe(0));
+  });
+
   it('load 时做形状校验，坏条目丢掉而不是抛', () => {
     // 这张表来自网络。一个 mark 字段写着别的字符串，就会让「新娘收藏过的」
     // 里混进一张她排除过的照片——那种错误在界面上一点痕迹都没有。

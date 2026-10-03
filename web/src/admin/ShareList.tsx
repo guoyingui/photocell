@@ -16,6 +16,7 @@ export interface AdminShare {
   allowUserCreation: boolean;
   defaultRole: 'viewer' | 'editor';
   maxUsers: number | null;
+  selectionLimit?: number | null;
   userCount: number;
   online: number;
 }
@@ -56,10 +57,11 @@ interface NewShareForm {
   defaultRole: 'viewer' | 'editor';
   allowUserCreation: boolean;
   maxUsers: string; // 空串 = 不限（null）
+  selectionLimit: string;
 }
 
 const EMPTY_FORM: NewShareForm = {
-  root: '', label: '', presetIndex: 1, defaultRole: 'editor', allowUserCreation: true, maxUsers: '',
+  root: '', label: '', presetIndex: 1, defaultRole: 'editor', allowUserCreation: true, maxUsers: '', selectionLimit: '',
 };
 
 interface ShareListProps {
@@ -110,6 +112,10 @@ export function ShareList({ selectedId, onSelect, now = Date.now() }: ShareListP
     }
 
     const preset = EXPIRY_PRESETS[form.presetIndex];
+    const selectionLimit = form.selectionLimit.trim() === '' ? null : Number(form.selectionLimit);
+    if (selectionLimit !== null && (!Number.isInteger(selectionLimit) || selectionLimit < 1 || selectionLimit > 10000)) {
+      setFormError('选片上限需为 1–10000 的整数'); return;
+    }
     setSubmitting(true);
     try {
       await adminPost('/api/admin/shares', {
@@ -119,6 +125,7 @@ export function ShareList({ selectedId, onSelect, now = Date.now() }: ShareListP
         defaultRole: form.defaultRole,
         allowUserCreation: form.allowUserCreation,
         maxUsers,
+        ...(selectionLimit !== null ? { selectionLimit } : {}),
       });
       setForm(EMPTY_FORM);
       setFormOpen(false);
@@ -212,6 +219,10 @@ export function ShareList({ selectedId, onSelect, now = Date.now() }: ShareListP
             />
           </label>
           {formError && <p className="error">{formError}</p>}
+          <label className="row">每位客户的选片上限
+            <input type="number" min="1" max="10000" placeholder="不限" value={form.selectionLimit}
+              onChange={(event) => setForm((previous) => ({ ...previous, selectionLimit: event.target.value }))} />
+          </label>
           <div className="modal-actions">
             <button className="primary" disabled={submitting} onClick={() => void submitCreate()}>
               创建
@@ -235,6 +246,7 @@ export function ShareList({ selectedId, onSelect, now = Date.now() }: ShareListP
                 <strong>{share.label || '（未命名）'}</strong>
                 <span className={`admin-status admin-status-${status}`}>{STATUS_LABEL[status]}</span>
                 <span className="muted">{share.userCount} 人 · 在线 {share.online}</span>
+                {share.selectionLimit != null && <span className="muted">选片上限 {share.selectionLimit} 张 / 人</span>}
               </button>
               <button
                 className="ghost danger"

@@ -14,7 +14,7 @@ export const DRAIN_TIMEOUT_MS = 3000;
 export function startBake(session, { tier = 'grid' } = {}) {
   if (state.has(session)) return;   // 幂等
 
-  const queue = session.assets.filter((a) => a.jpg).map((a) => a.id);
+  const queue = session.assets.filter((a) => a.jpg || a.raws?.length).map((a) => a.id);
   const st = { queue, queued: new Set(queue), stopped: false, current: null };
   state.set(session, st);
 

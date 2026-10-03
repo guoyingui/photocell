@@ -6,6 +6,7 @@ import { useView } from '../store/view';
 import { useSession } from '../store/session';
 import { resolveExportScope, type ExportScope } from '../../../shared/exportScope.js';
 import { DirBrowser } from './DirBrowser';
+import { ExportHistory } from './ExportHistory';
 
 interface AssetRef { id: string; existingPath: string }
 interface RenamedRef { id: string; path: string }
@@ -63,7 +64,7 @@ function describeError(e: unknown): string {
   return message;
 }
 
-export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ExportPanel({ open, onClose, visibleIds }: { open: boolean; onClose: () => void; visibleIds?: string[] }) {
   const assets = useLibrary((s) => s.assets);
   const marks = useMarks((s) => s.marks);
   const contrib = useMarks((s) => s.contrib);
@@ -86,7 +87,7 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
   }, [online, roster, contrib]);
   const scope: ExportScope = scopeKind === 'selection' ? { kind: 'selection', assetIds: [...selection] }
     : scopeKind === 'client' ? { kind: 'client', clientId }
-      : scopeKind === 'filtered' ? { kind: 'filtered', dir, tab, clientId: clientFilter }
+      : scopeKind === 'filtered' ? { kind: 'filtered', dir, tab, clientId: clientFilter, ...(visibleIds ? { assetIds: visibleIds } : {}) }
         : { kind: 'all' };
   let scopeError = '';
   let picked: typeof assets = [];
@@ -117,6 +118,8 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
   // 用 mode 判断"现在跑的是不是 move"会在用户手滑时给出错误答案。
   const [jobMode, setJobMode] = useState<'copy' | 'move'>('copy');
   const [err, setErr] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
   // 传输层掉线（EventSource 自己的 onerror，没有 message）跟服务端真的报告
   // "导出失败"（有 message 的 error 事件）不是一回事：前者只是连接不稳定，
   // 浏览器会自动重连，任务在服务端仍在继续跑，只有 /cancel 才会中止它。
@@ -144,7 +147,8 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
     const view = useView.getState();
     setClientId(view.clientFilter ?? 'admin');
     setScopeKind(view.selection.size > 1 ? 'selection'
-      : view.dirFilter !== null || view.tab !== 'all' ? 'filtered'
+      : view.dirFilter !== null || view.tab !== 'all' || Object.values(view.photoFilters).some(Boolean)
+        || view.reviewFilter !== 'all' || view.opinionFilter !== 'all' || Object.values(view.annotationFilters).some(Boolean) ? 'filtered'
         : view.clientFilter ? 'client' : 'all');
     setSummary(null);
     setProgress(null);
@@ -153,6 +157,7 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
     setStreamNotice(false);
     setConfirmText('');
     setConfirmOpen(false);
+    setHistoryOpen(false);
   }, [open]);
 
   // 确认期间即使张数没变，名单变了也必须重新确认。
@@ -222,9 +227,17 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
   if (!open) return null;
 
   return (
-    <div className="modal" onClick={(e) => { if (e.target === e.currentTarget && !progress) onClose(); }}>
+    <div className="modal" onClick={(e) => { if (e.target === e.currentTarget && !progress && !historyBusy) onClose(); }}>
       <div className="modal-box">
         <h2>导出照片</h2>
+        <nav className="tabs">
+          <button className={!historyOpen ? 'tab tab-on' : 'tab'} disabled={!!progress || historyBusy} onClick={() => setHistoryOpen(false)}>新建导出</button>
+          <button className={historyOpen ? 'tab tab-on' : 'tab'} disabled={!!progress || historyBusy} onClick={() => setHistoryOpen(true)}>导出历史</button>
+        </nav>
+        {historyOpen ? <>
+          <ExportHistory onBusyChange={setHistoryBusy} />
+          <div className="modal-actions"><button disabled={historyBusy} onClick={onClose}>关闭</button></div>
+        </> : <>
 
         <fieldset className="export-options" disabled={!!progress}>
           <label className="row">导出范围
@@ -242,14 +255,14 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
           </label>}
           <p className="export-scope" role="status">本次范围：{scopeLabel}</p>
           {scopeKind === 'filtered' && <p className="muted">
-            仅导出当前目录、标签页及成员筛选内的收藏，包含折叠连拍组中的照片。
+            仅导出当前目录、标签页、成员、文件名、拍摄参数和浏览状态筛选内的收藏，包含折叠连拍组中的照片。
           </p>}
           {scopeError && <p className="error">{scopeError}</p>}
 
         <p className="muted">
           {scopeKind === 'selection' ? '选中' : '收藏'} {picked.length} 张，共 {fileCount} 个文件
           {missingRawCount > 0 && (
-            <strong className="warn"> · 其中 {missingRawCount} 张没有 RAW，会被跳过</strong>
+              <strong className="warn"> · 其中 {missingRawCount} 张没有 RAW{includeJpg ? '，可用 JPG 按选项导出' : '，会被跳过'}</strong>
           )}
         </p>
 
@@ -309,7 +322,7 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
 
             {summary.missingRaw.length > 0 && (
               <div className="missing-raw">
-                <strong>{summary.missingRaw.length} 张收藏的照片没有 RAW，一个文件都没有导出：</strong>
+                <strong>{summary.missingRaw.length} 张照片没有 RAW，请核对对应文件；可用 JPG 按导出选项处理：</strong>
                 <ul>{summary.missingRaw.map((id) => <li key={id}><code>{id}</code></li>)}</ul>
               </div>
             )}
@@ -356,6 +369,7 @@ export function ExportPanel({ open, onClose }: { open: boolean; onClose: () => v
             {mode === 'move' ? `移动 ${fileCount} 个文件` : `复制 ${fileCount} 个文件`}
           </button>
         </div>
+        </>}
       </div>
 
       {/* move 的二次确认：独立的可访问弹层，故意不在自己的 DOM 子树里出现 fileCount——

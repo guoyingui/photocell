@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getJSON, postJSON, patchJSON, deleteJSON } from '../lib/api';
+import { getJSON, postJSON, putJSON, patchJSON, deleteJSON } from '../lib/api';
 
 /**
  * 本地界面的分享管理面板（规格 §7.3，计划 Task 18）。
@@ -9,10 +9,9 @@ import { getJSON, postJSON, patchJSON, deleteJSON } from '../lib/api';
  * 1. **风险提示必须显著**：这条链接本身就是密码，拿到的人都能进——
  *    没有第二道验证。有效期 / 撤销 / 人数上限 / 关闭新成员是四个闸门，
  *    必须是这个面板里真的能点、能改的控件，不是文档里提一句就算数。
- * 2. **没开 `--share` 时绝不拼一条连不上的链接。** `GET /api/admin/netaddr`
- *    的 `share` 字段就是唯一的事实来源：为 false 时只显示"需要用这条命令
- *    重启"，命令本身原样给出，不显示任何地址选择器或 http:// 链接——
- *    哪怕 `addresses` 不为空（服务端不管有没有分享都会探测网卡）。
+ * 2. **没有真实分享监听时不拼客户链接。** `GET /api/admin/netaddr` 的状态
+ *    和实际端口是事实来源；本机普通启动提供临时开启入口，启动参数配置的
+ *    分享保留既有端口。关闭状态不显示地址选择器或链接。
  * 3. **多网卡时列出全部候选地址，不自动挑一个。** 服务端已经把回环地址和
  *    IPv6 链路本地地址过滤掉了（`server/lib/netaddr.js`），这里拿到的每一条
  *    都是"原则上能用"的，具体哪个网段客人连得上只有摄影师自己知道——
@@ -37,6 +36,7 @@ export interface ShareRecord {
   allowUserCreation: boolean;
   defaultRole: Role;
   maxUsers: number | null;
+  selectionLimit?: number | null;
   /** 这条分享的客户彼此看不看得见对方的选片标记。摄影师自己不受影响。 */
   showPeerMarks: boolean;
   userCount: number;
@@ -50,6 +50,7 @@ interface NetAddress {
 }
 
 interface NetInfo {
+  canControl?: boolean;
   share: boolean;
   port: number | null;
   addresses: NetAddress[];
@@ -149,6 +150,9 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [networkBusy, setNetworkBusy] = useState(false);
+  const [networkError, setNetworkError] = useState('');
+  const [qrId, setQrId] = useState<string | null>(null);
 
   const [label, setLabel] = useState('');
   const [preset, setPreset] = useState<ExpiryPreset>('7d');
@@ -157,6 +161,8 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
   // 默认勾上 = 默认公开，和服务端 createShare 的默认值同一个口径。
   const [showPeerMarks, setShowPeerMarks] = useState(true);
   const [maxUsersText, setMaxUsersText] = useState('');
+  const [selectionLimitText, setSelectionLimitText] = useState('');
+  const [limitEdit, setLimitEdit] = useState<{ id: string; value: string } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -181,10 +187,19 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
     if (!open) return;
     setSelectedAddr(null);
     setRevokeConfirmId(null);
+    setLimitEdit(null);
     void load();
   }, [open]);
 
   if (!open) return null;
+
+  const toggleNetwork = async () => {
+    if (!net || networkBusy) return;
+    setNetworkBusy(true); setNetworkError('');
+    try { const result = await putJSON<NetInfo>('/api/admin/network', { enabled: !net.share }); setNet(result); setSelectedAddr(null); setQrId(null); }
+    catch (err) { setNetworkError(describeError(err)); }
+    finally { setNetworkBusy(false); }
+  };
 
   const submitCreate = async () => {
     setCreateError(null);
@@ -200,6 +215,10 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
     }
     setCreating(true);
     try {
+      const selectionLimit = selectionLimitText.trim() === '' ? null : Number(selectionLimitText);
+      if (selectionLimit !== null && (!Number.isInteger(selectionLimit) || selectionLimit < 1 || selectionLimit > 10000)) {
+        setCreateError('选片上限需为 1–10000 的整数，留空表示不限'); return;
+      }
       await postJSON('/api/admin/shares', {
         label,
         expiresAt: expiresAtForPreset(preset),
@@ -207,9 +226,11 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
         allowUserCreation,
         maxUsers,
         showPeerMarks,
+        ...(selectionLimit !== null ? { selectionLimit } : {}),
       });
       setLabel('');
       setMaxUsersText('');
+      setSelectionLimitText('');
       await load();
     } catch (e) {
       setCreateError(describeError(e));
@@ -278,14 +299,19 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
         </p>
 
         {loadError && <p className="error">{loadError}</p>}
+        {net?.canControl && <div className="share-network-control"><button disabled={networkBusy} onClick={() => void toggleNetwork()}>
+          {networkBusy ? '调整中…' : net.share ? '关闭局域网分享' : '开启局域网分享'}</button>
+          <span className="muted">{net.share ? '关闭后客户连接会断开，本机选片继续。' : '开启后使用独立分享端口，通过 HTTP 为同一网络的客户提供访问。'}</span></div>}
+        {networkError && <p className="error">{networkError}</p>}
+        {net?.share && !net.canControl && <p className="muted">局域网分享由启动参数开启，关闭服务即可结束网络访问。</p>}
 
         {/* 要求 2：没开 --share 时不给一条连不上的链接，只给重启指引和命令本身。 */}
         {net && !net.share && (
           <div className="share-restart">
             <p><strong>尚未开启局域网分享。</strong>局域网内的其他人现在连不上这台电脑——
               发一条 <code>http://127.0.0.1</code> 开头的链接给客户，他只会打不开。</p>
-            <p>要让别人一起选片，请先停掉当前这个进程，再用这条命令重新启动：</p>
-            <code className="share-cmd">npm start -- --share</code>
+            {!net.canControl && <><p>当前启动方式需使用这条命令开启分享：</p>
+              <code className="share-cmd">npm start -- --share</code></>}
           </div>
         )}
 
@@ -363,6 +389,9 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
             inputMode="numeric"
           />
         </label>
+        <label className="row">每位客户的选片上限
+          <input value={selectionLimitText} onChange={(event) => setSelectionLimitText(event.target.value)} placeholder="不限" type="number" min="1" max="10000" />
+        </label>
         <label className="row">
           <input
             type="checkbox"
@@ -409,7 +438,21 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
               </div>
               <div className="share-row-meta muted">
                 有效期：{formatExpiry(share.expiresAt)}
+                {' · 选片上限：'}{share.selectionLimit ?? '不限'}{share.selectionLimit != null && ' 张 / 人'}
               </div>
+              {limitEdit?.id === share.id && <label className="row">选片上限
+                <input type="number" min="1" max="10000" placeholder="不限" value={limitEdit.value}
+                  onChange={(event) => setLimitEdit({ id: share.id, value: event.target.value })} />
+                <button onClick={async () => {
+                  const value = limitEdit.value.trim() === '' ? null : Number(limitEdit.value);
+                  if (value !== null && (!Number.isInteger(value) || value < 1 || value > 10000)) {
+                    setRowError('选片上限需为 1–10000 的整数'); return;
+                  }
+                  try { await patchJSON(`/api/admin/shares/${share.id}`, { selectionLimit: value });
+                    setLimitEdit(null); await load(); }
+                  catch (err) { setRowError(describeError(err)); }
+                }}>保存上限</button><button onClick={() => setLimitEdit(null)}>取消</button>
+              </label>}
               <div className="share-row-actions">
                 {link ? (
                   <>
@@ -417,11 +460,14 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
                     <button onClick={() => copyLink(link, share.id)}>
                       {copiedId === share.id ? '已复制' : '复制链接'}
                     </button>
+                    <button onClick={() => setQrId(qrId === share.id ? null : share.id)}>二维码</button>
+                    {qrId === share.id && selected && <img className="share-qr" alt="分享链接二维码"
+                      src={`/api/admin/share-qr?id=${encodeURIComponent(share.id)}&address=${encodeURIComponent(selected.address)}`} />}
                   </>
                 ) : net?.share ? (
                   <span className="muted">请先在上方选择一个网络地址</span>
                 ) : (
-                  <span className="muted">开启 --share 后才能生成链接</span>
+                  <span className="muted">开启局域网分享后才能生成链接</span>
                 )}
                 <button onClick={() => void toggleAllow(share)} disabled={share.revoked}>
                   {share.allowUserCreation ? '关闭新成员' : '开启新成员'}
@@ -429,6 +475,7 @@ export function SharePanel({ open, onClose }: { open: boolean; onClose: () => vo
                 <button onClick={() => void togglePeerMarks(share)} disabled={share.revoked}>
                   {share.showPeerMarks ? '隐藏客户标记' : '公开客户标记'}
                 </button>
+                <button disabled={share.revoked} onClick={() => setLimitEdit({ id: share.id, value: String(share.selectionLimit ?? '') })}>调整选片上限</button>
                 {revokeConfirmId === share.id ? (
                   <span className="share-revoke-confirm">
                     确定撤销？在线访客会立即被断开。

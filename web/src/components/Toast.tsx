@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMarks } from '../store/marks';
 import { useNotice } from '../store/notice';
+import { useSession } from '../store/session';
 
 /** 标记后给一条可撤销的提示；保存失败也从这里冒出来。 */
 export function Toast() {
@@ -9,6 +10,7 @@ export function Toast() {
   const error = useMarks((s) => s.error);
   const clearError = useMarks((s) => s.clearError);
   const notice = useNotice((s) => s.text);
+  const canWrite = useSession((s) => s.canWrite());
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -55,7 +57,9 @@ export function Toast() {
   return (
     <div className="toast">
       已更新 {last.length} 张
-      <button className="ghost" onClick={undo}>撤销 (⌘Z)</button>
+      {canWrite && <button className="ghost" onClick={() => {
+        if (useSession.getState().canWrite()) undo();
+      }}>撤销（⌘/Ctrl+Z）</button>}
     </div>
   );
 }

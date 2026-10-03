@@ -34,6 +34,7 @@ export interface SessionState {
    * 而他标过的照片还在，头像不该因此变成一个问号。
    */
   roster: { id: string; nickname: string }[];
+  selectionLocked: boolean;
   loadRoster: () => Promise<void>;
   /** admin 或者 role === 'editor' 才能发出写请求；viewer 与身份未定一律 false。 */
   canWrite(): boolean;
@@ -57,6 +58,7 @@ const INITIAL: Pick<SessionState, 'kind' | 'user' | 'share' | 'online'> = {
 export const useSession = create<SessionState>((set, get) => ({
   ...INITIAL,
   roster: [],
+  selectionLocked: false,
   async loadRoster() {
     // 访客拿不到这个端点（admin-only），拉失败就维持空名册——
     // 昵称退回「已离开的成员」是可接受的降级，整个界面不该因此报错。
@@ -67,8 +69,8 @@ export const useSession = create<SessionState>((set, get) => ({
     } catch { /* 访客或未开库，保持空 */ }
   },
   canWrite() {
-    const { kind, user } = get();
-    return kind === 'admin' || user?.role === 'editor';
+    const { kind, user, selectionLocked } = get();
+    return kind === 'admin' || (user?.role === 'editor' && !selectionLocked);
   },
   canHide() { return get().kind === 'admin'; },
 }));

@@ -5,6 +5,9 @@ import path from 'node:path';
 import sharp from 'sharp';
 import pLimit from 'p-limit';
 import { marksDir } from './store.js';
+import { previewSource } from './rawPreview.js';
+import { assertWithin } from './safepath.js';
+import { ensureCacheDir, withCacheWork } from './cacheLifecycle.js';
 
 export const TIERS = {
   grid: { size: 320, quality: 72 },
@@ -95,9 +98,9 @@ const jpgRelPath = (asset) => (asset.dir ? `${asset.dir}/${asset.jpg}` : asset.j
 
 let tmpSeq = 0;
 
-async function generate(srcAbs, destAbs, tier) {
+async function generate(root, srcAbs, destAbs, tier) {
   const { size, quality } = TIERS[tier];
-  await fs.mkdir(path.dirname(destAbs), { recursive: true });
+  await ensureCacheDir(root, 'thumbs');
   const tmp = `${destAbs}.${process.pid}.${tmpSeq++}.tmp`;
   await sharp(srcAbs, { failOn: 'none' })
     .rotate()          // 无参数即按 EXIF Orientation 自动摆正
@@ -113,11 +116,12 @@ async function generate(srcAbs, destAbs, tier) {
  */
 export async function getThumb(root, asset, tier) {
   if (!TIERS[tier]) throw new Error(`未知缩略图档位：${tier}`);
-  if (!asset.jpg) return { file: null, key: '', placeholder: true };
-
-  const rel = jpgRelPath(asset);
-  const key = cacheKey(rel, asset.jpgMtimeMs, asset.jpgSize, tier);
-  const dest = thumbPath(root, key);
+  let source;
+  try { source = await previewSource(root, asset); }
+  catch (err) { if (err.status === 403) throw err; return { file: null, key: '', placeholder: true }; }
+  const rel = asset.jpg ? jpgRelPath(asset) : `raw:${source.key}`;
+  const key = cacheKey(rel, asset.jpg ? asset.jpgMtimeMs : source.key, asset.jpgSize ?? 0, tier);
+  const dest = await assertWithin([root], thumbPath(root, key));
 
   try {
     await fs.access(dest);
@@ -127,8 +131,8 @@ export async function getThumb(root, asset, tier) {
   const flightKey = inflightKey(root, key);
   if (inflight.has(flightKey)) return inflight.get(flightKey);
 
-  const srcAbs = path.join(root, ...rel.split('/'));
-  const job = limit(() => generate(srcAbs, dest, tier))
+  const srcAbs = source.file;
+  const job = limit(() => withCacheWork(root, () => generate(root, srcAbs, dest, tier)))
     .then(() => ({ file: dest, key, placeholder: false }))
     .catch((err) => {
       console.warn(`[thumb] 生成失败 ${rel}: ${err.message}`);

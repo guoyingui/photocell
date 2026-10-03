@@ -32,6 +32,17 @@ export function normalizeCellWidth(value) {
 
 const VALID_MARKS = new Set(['pick', 'reject']);
 
+function sanitizeFinalMarks(value) {
+  const result = {};
+  if (!isPlainObject(value)) return result;
+  for (const [id, decision] of Object.entries(value)) {
+    if (isPlainObject(decision) && VALID_MARKS.has(decision.mark) && Number.isFinite(decision.at)) {
+      result[id] = { mark: decision.mark, at: decision.at };
+    }
+  }
+  return result;
+}
+
 export const marksDir = (root) => path.join(root, '.photocull');
 const marksPath = (root) => path.join(marksDir(root), 'marks.json');
 const bakPath = (root) => path.join(marksDir(root), 'marks.bak.json');
@@ -118,6 +129,8 @@ function sanitizeSettings(field) {
   return {
     ...DEFAULT_SETTINGS,
     ...rest,
+    burstThresholdMs: Number.isInteger(rest.burstThresholdMs) && rest.burstThresholdMs >= 0
+      && rest.burstThresholdMs <= 10000 ? rest.burstThresholdMs : DEFAULT_SETTINGS.burstThresholdMs,
     cellWidth: normalizeCellWidth(cellWidth !== undefined ? cellWidth : gridSize),
   };
 }
@@ -135,11 +148,17 @@ function sanitize(parsed) {
   // contrib 是权威。旧文件没有它时用 marks + marksMeta 回填（规格 §1.4）——
   // 回填失败只会退化成"贡献表是空的"，不阻塞开库。
   const stored = sanitizeContrib(parsed?.contrib);
+  const finalMarks = sanitizeFinalMarks(parsed?.finalMarks);
+  const legacyMarks = { ...rawMarks };
+  for (const id of Object.keys(finalMarks)) delete legacyMarks[id];
   const contrib = Object.keys(stored).length > 0
     ? stored
-    : backfill(rawMarks, sanitizeMarksMeta(parsed?.marksMeta, rawMarks));
+    : backfill(legacyMarks, sanitizeMarksMeta(parsed?.marksMeta, legacyMarks));
 
   const { marks, marksMeta } = deriveFromContrib(contrib);
+  for (const [id, decision] of Object.entries(finalMarks)) {
+    marks[id] = decision.mark; marksMeta[id] = { by: 'admin', at: decision.at };
+  }
 
   return {
     version: 1,
@@ -148,6 +167,8 @@ function sanitize(parsed) {
     settings: sanitizeSettings(parsed?.settings),
     marksMeta,
     contrib,
+    finalMarks,
+    finalRevision: Number.isSafeInteger(parsed?.finalRevision) && parsed.finalRevision >= 0 ? parsed.finalRevision : 0,
     hidden: sanitizeHidden(parsed?.hidden, marks),
   };
 }
@@ -279,7 +300,8 @@ export async function createMarkStore(root, { debounceMs = 500 } = {}) {
       if (next === null) delete data.contrib[id];
       else data.contrib[id] = next;
 
-      const best = evaluate(data.contrib[id]);
+      const decision = data.finalMarks[id];
+      const best = decision ? { mark: decision.mark, by: 'admin', at: decision.at } : evaluate(data.contrib[id]);
       if (best === null) {
         delete data.marks[id];
         delete data.marksMeta[id];
@@ -291,6 +313,22 @@ export async function createMarkStore(root, { debounceMs = 500 } = {}) {
         const at2 = data.hidden.indexOf(id);
         if (at2 !== -1) data.hidden.splice(at2, 1);
       }
+      schedule();
+    },
+
+    setFinalMarks(patch) {
+      if (closed) throw new Error('Cannot modify a closed MarkStore');
+      data.finalRevision++;
+      const at = Date.now();
+      for (const [id, mark] of Object.entries(patch)) {
+        if (mark !== null && !VALID_MARKS.has(mark)) throw new Error(`非法最终决定：${mark}`);
+        if (mark === null) delete data.finalMarks[id];
+        else data.finalMarks[id] = { mark, at };
+        const best = mark === null ? evaluate(data.contrib[id]) : { mark, by: 'admin', at };
+        if (best) { data.marks[id] = best.mark; data.marksMeta[id] = { by: best.by, at: best.at }; }
+        else { delete data.marks[id]; delete data.marksMeta[id]; }
+      }
+      data.hidden = data.hidden.filter((id) => data.marks[id] === undefined);
       schedule();
     },
 

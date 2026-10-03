@@ -217,6 +217,6 @@ describe('按人筛选接进网格', () => {
 
     const tab = await screen.findByRole('button', { name: /新娘碰过的/ });
     expect(tab.textContent).toContain('1');
-    expect(screen.queryByRole('button', { name: /^全部/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^全部\s*\d*$/ })).toBeNull();
   });
 });

@@ -9,6 +9,14 @@ import { assetsInDir, countByTab, filterGroups, toBurstItems } from '../lib/deri
 import { groupBursts } from '../lib/bursts';
 import { flatOrder } from '../lib/order';
 import { useKeyboard } from '../lib/useKeyboard';
+import { useVisiblePhotos } from '../lib/useVisiblePhotos';
+import { usePhotoFilterGroups, usePhotoFilterAssets } from '../lib/usePhotoFilters';
+import { useReviewProgress } from '../lib/useReviewProgress';
+import { PhotoTools } from '../components/PhotoTools';
+import { AnnotationTools } from '../components/AnnotationTools';
+import { usePhotoAnnotations } from '../lib/useAnnotations';
+import { PhotoInfo } from '../components/PhotoInfo';
+import { SelectionBar } from '../components/SelectionBar';
 import {
   blockerPropsFor, createReconnectRefetch, handleRealtimeEvent, resetRealtime, useRealtime,
 } from '../lib/realtime';
@@ -52,6 +60,9 @@ interface MarksResult {
   settings: Settings;
   marksMeta?: unknown;
   hidden?: unknown;
+  finalMarks?: unknown;
+  finalRevision?: number;
+  ownContrib?: unknown;
 }
 
 type Phase = { kind: 'loading' } | { kind: 'ready' } | { kind: 'failed'; message: string };
@@ -73,9 +84,8 @@ function messageOf(err: unknown): string {
  * `Grid` / `StackCell` / `Thumb` / `Lightbox` / `Sidebar` 原封不动复用——
  * 它们只读 store，不认识身份，也不该认识。
  *
- * 只读（viewer）的门禁**不在这里**：标记和撤销全部只有键盘入口，没有按钮
- * 可以隐藏，所以拦截做在 `useKeyboard` 里（见那边的注释）。这里只负责把
- * 「你现在是只读」这件事说出来，免得按了 P 没反应的人以为界面卡了。
+ * 只读（viewer）的写入门禁由标记入口和快捷键共同检查，操作按钮按权限显示。
+ * 这里同时提示「你现在是只读」，免得按了 P 没反应的人以为界面卡了。
  */
 export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -98,6 +108,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
   const dirFilter = useView((s) => s.dirFilter);
   const threshold = useView((s) => s.threshold);
   const expanded = useView((s) => s.expanded);
+  const cursor = useView((s) => s.cursor);
   const setResolveVisible = useView((s) => s.setResolveVisible);
 
   const share = useSession((s) => s.share);
@@ -131,7 +142,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
         // 顺序照抄 library.open()：标记和阈值必须在网格拿到 assets **之前**
         // 就位，否则整屏会先用「全部未标记」渲染一帧，别人已经选过的片
         // 看起来像是被谁清空了。
-        useMarks.getState().load(loaded.marks, loaded.marksMeta, loaded.hidden);
+        useMarks.getState().load(loaded.marks, loaded.marksMeta, loaded.hidden, undefined, loaded.finalMarks, loaded.finalRevision, loaded.ownContrib);
         useView.getState().setThreshold(loaded.settings.burstThresholdMs);
         useLibrary.setState({
           assets: lib.assets,
@@ -155,7 +166,12 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
             if (useRealtime.getState().blocked) { stop?.(); stop = null; }
             return;
           }
-          if (event.type === 'rescan') {
+          if (event.type === 'settings') {
+            useLibrary.setState({ settings: event.settings });
+            if (useView.getState().threshold !== event.settings.burstThresholdMs) {
+              useView.getState().setThreshold(event.settings.burstThresholdMs);
+            }
+          } else if (event.type === 'rescan') {
             // 摄影师原地重扫了这个文件夹。换掉的是**所有人**正在看的那一份，
             // 不重拉的话访客手里一直是刷新前那份列表：点开一张已经从磁盘上
             // 消失的照片只会看到「无法预览」，而他完全不知道为什么。
@@ -212,15 +228,20 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
     () => groupBursts(toBurstItems(assetsInDir(assets, dirFilter), metas), threshold),
     [assets, dirFilter, metas, threshold],
   );
-  const visibleGroups = useMemo(
+  const markedGroups = useMemo(
     () => filterGroups(groups, marks, tab, hidden), [groups, marks, tab, hidden]);
+  const visibleGroups = usePhotoFilterGroups(markedGroups);
+  useReviewProgress(phase.kind === 'ready' && !blocked);
+  usePhotoAnnotations(phase.kind === 'ready' && !blocked);
   const order = useMemo(() => flatOrder(visibleGroups, expanded), [visibleGroups, expanded]);
   const photoOrder = useMemo(() => visibleGroups.flatMap((group) => group.ids), [visibleGroups]);
+  useVisiblePhotos(photoOrder, phase.kind === 'ready');
   useKeyboard(order, photoOrder);
 
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
 
-  const inDir = useMemo(() => assetsInDir(assets, dirFilter), [assets, dirFilter]);
+  const filteredAssets = usePhotoFilterAssets();
+  const inDir = useMemo(() => assetsInDir(filteredAssets, dirFilter), [filteredAssets, dirFilter]);
   const counts = useMemo(() => countByTab(inDir, marks, hidden), [inDir, marks, hidden]);
 
   // 把「给定 id + expanded 集合，算出应该显示成哪个 id」的判断注入 view store，
@@ -231,6 +252,9 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
       if (!group || group.ids.length === 1) return id;
       return exp.has(group.key) ? id : group.ids[0];
     });
+    const view = useView.getState();
+    const focused = visibleGroups.find((group) => group.ids.includes(view.cursor ?? ''));
+    if (focused && focused.ids[0] !== view.cursor && !view.expanded.has(focused.key)) view.toggleExpand(focused.key);
   }, [visibleGroups, setResolveVisible]);
 
   // 阻断排在最前面：被踢 / 分享结束之后，这一屏不该再有任何别的出口，
@@ -262,6 +286,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
 
         <CompareButton order={photoOrder} />
         <HistoryButtons />
+        <button onClick={() => useView.getState().toggleInfo()}>照片信息（I）</button>
         <MarkBar />
 
         <span className="muted">
@@ -285,6 +310,9 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
           <span className="guest-me">{user?.nickname}</span>
         </div>
       </header>
+      <PhotoTools groups={visibleGroups} order={photoOrder} />
+      <AnnotationTools order={photoOrder} />
+      <SelectionBar ready={phase.kind === 'ready' && !blocked} />
 
       {/* 「从备份恢复」对访客同样重要：他正要照着一份可能过时的标记做选择。
           skippedFiles 来自 /assets，marksRecovered 只有 join 响应里有，
@@ -298,6 +326,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
       <div className="body">
         <Sidebar />
         <Grid groups={visibleGroups} order={order} />
+        <PhotoInfo id={cursor} />
       </div>
       <Lightbox order={order} byId={byId} />
       <CompareView order={photoOrder} byId={byId} />

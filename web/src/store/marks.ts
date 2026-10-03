@@ -17,6 +17,24 @@ type UndoEntry = { id: string; before: Mark | undefined }[];
  */
 export interface MarkBy { by: string; at: number }
 type MarksMeta = Record<string, MarkBy>;
+export type FinalMarks = Record<string, { mark: Mark; at: number }>;
+
+function sanitizeFinalMarks(value: unknown): FinalMarks {
+  const result: FinalMarks = {};
+  if (!value || typeof value !== 'object') return result;
+  for (const [id, decision] of Object.entries(value)) {
+    if (!decision || typeof decision !== 'object') continue;
+    const { mark, at } = decision;
+    if ((mark === 'pick' || mark === 'reject') && typeof at === 'number' && Number.isFinite(at)) result[id] = { mark, at };
+  }
+  return result;
+}
+
+function overlayFinal(marks: Marks, meta: MarksMeta, finalMarks: FinalMarks) {
+  for (const [id, decision] of Object.entries(finalMarks)) {
+    marks[id] = decision.mark; meta[id] = { by: 'admin', at: decision.at };
+  }
+}
 
 const UNDO_LIMIT = 50;
 
@@ -69,6 +87,12 @@ function sanitizeContrib(value: unknown): Contrib {
   return clean;
 }
 
+function contribFromOwn(value: unknown): Contrib {
+  const self = actorId();
+  if (!self || !value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return sanitizeContrib(Object.fromEntries(Object.entries(value).map(([id, vote]) => [id, { [self]: vote }])));
+}
+
 /** 只放行字符串元素。这份数据要进 Set 并直接参与渲染判断，坏元素会静默筛错照片。 */
 function sanitizeHiddenList(value: unknown): Set<string> {
   if (!Array.isArray(value)) return new Set();
@@ -76,21 +100,23 @@ function sanitizeHiddenList(value: unknown): Set<string> {
 }
 
 interface MarksState {
+  pendingCount: number;
   marks: Marks;
+  finalMarks: FinalMarks;
+  finalRevision: number;
   /** 标记归属（Task 20 的角标数据源）。旧文件夹没有这张表，那时它就是空的。 */
   marksMeta: MarksMeta;
   /** 已隐藏的资产。仅管理员改得动，但访客也持有它（隐藏对所有人生效）。 */
   hidden: Set<string>;
   /**
-   * 每张照片上每个人各投过什么票。**只有管理员拿得到**（服务端 GET /marks
-   * 只给 admin 下发 contrib），访客这边永远是空表，按人筛选的入口在他那侧
-   * 本来也不渲染。
+   * 每张照片的原始意见。管理员拿完整贡献表，访客仅拿自己的意见，
+   * 避免把摄影师最终决定当成自己撤销前的值。
    */
   contrib: Contrib;
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
   error: string | null;
-  load: (marks: Marks, meta?: unknown, hidden?: unknown, contrib?: unknown) => void;
+  load: (marks: Marks, meta?: unknown, hidden?: unknown, contrib?: unknown, finalMarks?: unknown, revision?: number, ownContrib?: unknown) => void;
   /** 手动关掉错误提示。没有它，保存失败的 toast 会一直挂到下一次标记成功为止。 */
   clearError: () => void;
   setMark: (ids: string[], mark: Mark | null) => void;
@@ -102,7 +128,9 @@ interface MarksState {
    */
   applyRemote: (changes: Record<string, Mark | null>, meta?: unknown) => void;
   /** 用服务端的整份快照收敛本地状态（SSE 重连后的全量补拉）。 */
-  reconcile: (remote: Marks, remoteMeta?: unknown) => void;
+  reconcile: (remote: Marks, remoteMeta?: unknown, contrib?: unknown, finalMarks?: unknown, revision?: number, ownContrib?: unknown) => void;
+  applyRemoteContrib: (changes: unknown) => void;
+  applyFinal: (finalMarks: unknown, changes: Record<string, Mark | null>, meta?: unknown, revision?: number) => void;
   setHidden: (ids: string[], hidden: boolean) => void;
   /** 服务端广播的整份 hidden。整份覆盖，不做增量合并。 */
   applyRemoteHidden: (list: unknown) => void;
@@ -128,6 +156,7 @@ export const useMarks = create<MarksState>((set, get) => {
   let seq = 0;
   let epoch = 0;
   let historySeq = 0;
+  let opinionsKnown = false;
   const owner = new Map<string, number>();
 
   // owner 回答的是「谁最后写过这个 id」，用来决定失败时该不该回滚。它回答不了
@@ -173,6 +202,7 @@ export const useMarks = create<MarksState>((set, get) => {
 
   function hold(ids: string[]) {
     for (const id of ids) inflight.set(id, (inflight.get(id) ?? 0) + 1);
+    set((state) => ({ pendingCount: state.pendingCount + 1 }));
   }
   function release(ids: string[]) {
     for (const id of ids) {
@@ -182,6 +212,7 @@ export const useMarks = create<MarksState>((set, get) => {
       if (left > 0) inflight.set(id, left);
       else inflight.delete(id);
     }
+    set((state) => ({ pendingCount: Math.max(0, state.pendingCount - 1) }));
   }
 
   /** 应用一批改动并把服务端写入做成乐观更新：失败即回滚这一批自己仍然「拥有」的 id。 */
@@ -229,8 +260,10 @@ export const useMarks = create<MarksState>((set, get) => {
       }
     }
 
+    const displayed = { ...next };
+    overlayFinal(displayed, nextMeta, get().finalMarks);
     set((s) => ({
-      marks: next,
+      marks: displayed,
       marksMeta: nextMeta,
       contrib: nextContrib,
       undoStack: kind === 'edit' ? [...s.undoStack, entries].slice(-UNDO_LIMIT)
@@ -243,7 +276,23 @@ export const useMarks = create<MarksState>((set, get) => {
     const patch: Record<string, Mark | null> = {};
     for (const { id } of entries) patch[id] = next[id] ?? null;
 
-    void putJSON('/api/library/marks', { marks: patch }).catch((err: Error) => {
+    void putJSON<{ marks?: Marks; marksMeta?: unknown; contrib?: unknown; ownContrib?: unknown; finalRevision?: number }>('/api/library/marks', { marks: patch }).then((result) => {
+      if (myEpoch !== epoch || !result?.marks) return;
+      if (result.finalRevision !== undefined && result.finalRevision < get().finalRevision) return;
+      const marks = { ...get().marks }, marksMeta = { ...get().marksMeta }, contrib = { ...get().contrib };
+      const incoming = sanitizeMeta(result.marksMeta);
+      const votes = result.contrib === undefined ? contribFromOwn(result.ownContrib) : sanitizeContrib(result.contrib);
+      const hasVotes = result.contrib !== undefined || result.ownContrib !== undefined;
+      for (const id of ids) {
+        if (owner.get(id) !== mySeq) continue;
+        const mark = result.marks[id];
+        if (mark === undefined) { delete marks[id]; delete marksMeta[id]; }
+        else { marks[id] = mark; if (incoming[id]) marksMeta[id] = incoming[id]; else delete marksMeta[id]; }
+        if (hasVotes) { if (votes[id]) contrib[id] = votes[id]; else delete contrib[id]; }
+      }
+      overlayFinal(marks, marksMeta, get().finalMarks);
+      set({ marks, marksMeta, contrib });
+    }).catch((err: Error) => {
       if (myEpoch !== epoch) return;
       // 回滚必须只动这一批自己涉及、且自己仍然是「最后写入者」的 id，
       // 并且基于失败时刻「最新」的 marks 计算 —— 绝不能把整个 marks 换成失败前的旧快照：
@@ -267,6 +316,7 @@ export const useMarks = create<MarksState>((set, get) => {
           if (was === undefined) delete contrib[id];
           else contrib[id] = was;
         }
+        overlayFinal(marks, marksMeta, s.finalMarks);
         return {
           marks,
           marksMeta,
@@ -285,6 +335,7 @@ export const useMarks = create<MarksState>((set, get) => {
   function ownMark(id: string): Mark | undefined {
     const state = get();
     const self = actorId();
+    if (self && opinionsKnown) return state.contrib[id]?.[self]?.mark;
     if (self && state.contrib[id]) return state.contrib[id][self]?.mark;
     if (self && state.marksMeta[id] && state.marksMeta[id].by !== self) return undefined;
     return state.marks[id];
@@ -303,7 +354,10 @@ export const useMarks = create<MarksState>((set, get) => {
   }
 
   return {
+    pendingCount: 0,
     marks: {},
+    finalMarks: {},
+    finalRevision: 0,
     marksMeta: {},
     hidden: new Set<string>(),
     contrib: {} as Contrib,
@@ -311,9 +365,10 @@ export const useMarks = create<MarksState>((set, get) => {
     redoStack: [],
     error: null,
 
-    load(marks, meta, hidden, contrib) {
+    load(marks, meta, hidden, contrib, finals, revision, ownContrib) {
       epoch++;
       historySeq++;
+      opinionsKnown = contrib !== undefined || ownContrib !== undefined;
       // 切换目录/重新加载是一次硬重置：任何仍在飞行中的旧 PUT，就算之后失败，
       // 也不应该再对新加载的状态有发言权，所以把归属记录一并清空。
       // 在飞计数同理：同一台相机的两场拍摄天然共享 id（IMG_0002），留着它
@@ -328,11 +383,17 @@ export const useMarks = create<MarksState>((set, get) => {
       // 归属表跟着标记一起换：旧文件夹、以及一直单机用的文件夹根本没有这张表
       // （marks.json 里没有 marksMeta 字段），那是常态而不是异常——按空表处理，
       // 不报错，界面上就是"没有角标"。hidden 同一条规矩。
+      const finalMarks = sanitizeFinalMarks(finals);
+      const displayed = { ...marks }, marksMeta = sanitizeMeta(meta);
+      overlayFinal(displayed, marksMeta, finalMarks);
       set({
-        marks: { ...marks },
-        marksMeta: sanitizeMeta(meta),
+        pendingCount: 0,
+        marks: displayed,
+        marksMeta,
+        finalMarks,
+        finalRevision: revision ?? 0,
         hidden: confirmedHidden,
-        contrib: sanitizeContrib(contrib),
+        contrib: contrib === undefined ? contribFromOwn(ownContrib) : sanitizeContrib(contrib),
         undoStack: [],
         redoStack: [],
         error: null,
@@ -397,7 +458,7 @@ export const useMarks = create<MarksState>((set, get) => {
         const by = incoming[id];
         if (by) {
           nextMeta[id] = by;
-          nextContrib[id] = { ...nextContrib[id], [by.by]: { mark, at: by.at } };
+          if (!get().finalMarks[id]) nextContrib[id] = { ...nextContrib[id], [by.by]: { mark, at: by.at } };
           touched = true;
         } else if (id in nextMeta) {
           // 认不出发起者（广播缺 by/at、或形状坏了）只能退化成"不显示归属"。
@@ -409,10 +470,39 @@ export const useMarks = create<MarksState>((set, get) => {
       // 别人的标记不进我的撤销栈：⌘Z 是「撤销我刚才做的事」，能撤掉别人的
       // 选择就不再是撤销而是覆盖。反过来收到广播也不清空撤销栈。
       // 一帧广播全被丢弃或全无变化时不 set()，免得白白惊动所有订阅者。
+      overlayFinal(next, nextMeta, get().finalMarks);
       if (touched) set({ marks: next, marksMeta: nextMeta, contrib: nextContrib });
     },
 
-    reconcile(remote, remoteMeta) {
+    applyRemoteContrib(changes) {
+      if (!changes || typeof changes !== 'object') return;
+      const contrib = { ...get().contrib };
+      for (const [id, value] of Object.entries(changes)) {
+        if (!value || typeof value !== 'object') continue;
+        const { by, mark, at } = value;
+        if (typeof by !== 'string' || !Number.isFinite(at) || ![null, 'pick', 'reject'].includes(mark)) continue;
+        if (by === actorId() && inflight.has(id)) continue;
+        const votes = { ...contrib[id] };
+        if (mark === null) delete votes[by]; else votes[by] = { mark, at };
+        if (Object.keys(votes).length) contrib[id] = votes; else delete contrib[id];
+      }
+      set({ contrib });
+    },
+
+    applyFinal(finals, changes, meta, revision) {
+      if (revision !== undefined && revision < get().finalRevision) return;
+      set({ finalMarks: sanitizeFinalMarks(finals), finalRevision: revision ?? get().finalRevision });
+      const marks = { ...get().marks }, marksMeta = { ...get().marksMeta }, incoming = sanitizeMeta(meta);
+      for (const [id, mark] of Object.entries(changes)) {
+        if (mark === null) { delete marks[id]; delete marksMeta[id]; }
+        else { marks[id] = mark; if (incoming[id]) marksMeta[id] = incoming[id]; else delete marksMeta[id]; }
+      }
+      overlayFinal(marks, marksMeta, get().finalMarks);
+      set({ marks, marksMeta });
+    },
+
+    reconcile(remote, remoteMeta, remoteContrib, finals, revision, ownContrib) {
+      if (revision !== undefined && revision < get().finalRevision) return;
       // SSE 只推增量，断开期间别人的改动不会补发，所以重连后必须以服务端的
       // 整份快照为准——包括「本地有、服务端没有」的 id（别人清掉了它）。
       const current = get().marks;
@@ -438,7 +528,20 @@ export const useMarks = create<MarksState>((set, get) => {
         if (mine) nextMeta[id] = mine;
         else delete nextMeta[id];
       }
-      set({ marks: next, marksMeta: nextMeta });
+      const finalMarks = finals === undefined ? get().finalMarks : sanitizeFinalMarks(finals);
+      overlayFinal(next, nextMeta, finalMarks);
+      const contrib = remoteContrib === undefined
+        ? ownContrib === undefined ? get().contrib : contribFromOwn(ownContrib)
+        : sanitizeContrib(remoteContrib);
+      if (remoteContrib !== undefined || ownContrib !== undefined) opinionsKnown = true;
+      const self = actorId();
+      if (self) for (const id of inflight.keys()) {
+        const votes = { ...contrib[id] };
+        const mine = get().contrib[id]?.[self];
+        if (mine) votes[self] = mine; else delete votes[self];
+        if (Object.keys(votes).length) contrib[id] = votes; else delete contrib[id];
+      }
+      set({ marks: next, marksMeta: nextMeta, finalMarks, finalRevision: revision ?? get().finalRevision, contrib });
     },
 
     setHidden(ids, hidden) {

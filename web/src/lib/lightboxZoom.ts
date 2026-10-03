@@ -15,9 +15,16 @@ export interface Pan { x: number; y: number }
 export interface ZoomState { scale: number; pan: Pan }
 export interface Viewport { w: number; h: number }
 
-export function clampScale(s: number): number {
-  if (!Number.isFinite(s)) return Number.isNaN(s) ? FIT : ZOOM_MAX;
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s));
+export function clampScale(s: number, max = ZOOM_MAX): number {
+  if (!Number.isFinite(s)) return Number.isNaN(s) ? FIT : max;
+  return Math.min(max, Math.max(ZOOM_MIN, s));
+}
+
+/** 贴合时不放大较小的图；100% 对应原始像素尺寸，而非贴合尺寸的固定倍数。 */
+export function fitImage(image: Viewport, viewport: Viewport) {
+  const ratio = image.w > 0 && image.h > 0 && viewport.w > 0 && viewport.h > 0
+    ? Math.min(1, viewport.w / image.w, viewport.h / image.h) : 1;
+  return { w: image.w * ratio, h: image.h * ratio, ratio };
 }
 
 /**
@@ -26,10 +33,10 @@ export function clampScale(s: number): number {
  * scale <= 1 时图片没有超出视口，平移没有任何意义——允许它只会让图片飘走，
  * 而用户没有任何参照能把它拖回来。
  */
-export function clampPan(pan: Pan, scale: number, viewport: Viewport): Pan {
+export function clampPan(pan: Pan, scale: number, viewport: Viewport, fitted = viewport): Pan {
   if (scale <= FIT) return { x: 0, y: 0 };
-  const overflowX = (viewport.w * scale - viewport.w) / 2;
-  const overflowY = (viewport.h * scale - viewport.h) / 2;
+  const overflowX = Math.max(0, (fitted.w * scale - viewport.w) / 2);
+  const overflowY = Math.max(0, (fitted.h * scale - viewport.h) / 2);
   return {
     x: Math.min(overflowX, Math.max(-overflowX, pan.x)),
     y: Math.min(overflowY, Math.max(-overflowY, pan.y)),
@@ -45,8 +52,9 @@ export function clampPan(pan: Pan, scale: number, viewport: Viewport): Pan {
  */
 export function zoomAt(
   state: ZoomState, factor: number, pointer: Pan, viewport: Viewport,
+  fitted = viewport, max = ZOOM_MAX,
 ): ZoomState {
-  const scale = clampScale(state.scale * factor);
+  const scale = clampScale(state.scale * factor, max);
   const ratio = scale / state.scale;
   const dx = pointer.x - viewport.w / 2;
   const dy = pointer.y - viewport.h / 2;
@@ -54,5 +62,5 @@ export function zoomAt(
     x: dx - (dx - state.pan.x) * ratio,
     y: dy - (dy - state.pan.y) * ratio,
   };
-  return { scale, pan: clampPan(pan, scale, viewport) };
+  return { scale, pan: clampPan(pan, scale, viewport, fitted) };
 }

@@ -5,7 +5,15 @@ import { normalizeMeta, readAllMeta } from './meta.js';
 // readAllMeta 以前零覆盖（分诊项 e），而它正好管着并发上限、乱序完成时的落位、
 // 单文件失败的降级和批次回调——三个任务依赖它，真实机身的 EXIF 又恰恰是意外
 // 最多的地方。把 exifr.parse 换成可编程的假实现，这几条语义才测得动。
-vi.mock('exifr', () => ({ default: { parse: vi.fn() } }));
+vi.mock('exifr', () => {
+  const parse = vi.fn();
+  class Exifr {
+    constructor(options) { this.options = options; }
+    async read(abs) { this.abs = abs; }
+    async parse() { return parse(this.abs, this.options); }
+  }
+  return { default: { parse, Exifr } };
+});
 
 const asset = (id, { jpg = `${id}.JPG`, dir = '', jpgMtimeMs = 1000, rawMtimeMs = 0 } = {}) =>
   ({ id, dir, stem: id, raws: [`${id}.CR3`], jpg, jpgSize: 10, jpgMtimeMs, rawMtimeMs });
@@ -120,13 +128,17 @@ describe('readAllMeta', () => {
   it('乱序完成时结果仍然按原索引落位，而不是按完成先后', async () => {
     // 第一个故意最慢：如果实现用的是 push 而不是 out[i]，结果顺序就会变成 B、C、A。
     const slow = deferred();
-    exifr.parse
-      .mockImplementationOnce(() => slow.promise)
-      .mockImplementation(async () => ({ Model: 'fast' }));
+    const fastFinished = deferred();
+    let fastCount = 0;
+    exifr.parse.mockImplementation(async (abs) => {
+      if (String(abs).endsWith('/A.JPG')) return slow.promise;
+      if (++fastCount === 2) fastFinished.resolve();
+      return { Model: 'fast' };
+    });
 
     const assets = [asset('A'), asset('B'), asset('C')];
     const pending = readAllMeta('/root', assets, { concurrency: 3 });
-    await new Promise((r) => setTimeout(r, 10));   // 让 B、C 先跑完
+    await fastFinished.promise;   // 按文件指定慢读取，不依赖异步路径校验的完成顺序
     slow.resolve({ Model: 'slow' });
 
     const out = await pending;
@@ -148,10 +160,10 @@ describe('readAllMeta', () => {
     expect(out[2].timeSource).toBe('exif');
   });
 
-  it('没有 JPG 的资产根本不去读 EXIF', async () => {
+  it('没有 JPG 的资产尝试 RAW 元数据，没有 EXIF 时降级到 RAW 时间', async () => {
     exifr.parse.mockResolvedValue({});
     const out = await readAllMeta('/root', [asset('ORPHAN', { jpg: null, rawMtimeMs: 777 })]);
-    expect(exifr.parse).not.toHaveBeenCalled();
+    expect(exifr.parse).toHaveBeenCalledWith('/root/ORPHAN.CR3', expect.any(Object));
     expect(out[0].timeSource).toBe('mtime');
   });
 

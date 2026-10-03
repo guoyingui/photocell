@@ -26,6 +26,12 @@ describe('导出范围', () => {
     expect(picks({ kind: 'selection', assetIds: ['B', 'B'] })).toEqual(['B']);
     expect(data.marks.B).toBe('reject');
   });
+  it('参数、搜索及进度筛选传入的子集只会收窄导出范围，空结果不能退回全库', () => {
+    expect(picks({ kind: 'filtered', assetIds: [] })).toEqual([]);
+    expect(picks({ kind: 'filtered', assetIds: ['B'] })).toEqual([]);
+    expect(picks({ kind: 'filtered', assetIds: ['B'], clientId: 'bride' })).toEqual(['B']);
+    expect(() => picks({ kind: 'filtered', assetIds: ['missing'] })).toThrow();
+  });
   it.each([null, { kind: 'unknown' }, { kind: 'client' }, { kind: 'filtered', tab: 'bad' },
     { kind: 'selection', assetIds: [] }, { kind: 'selection', assetIds: ['../other'] }])(
     '无效范围不能退回导出全库：%j', (scope) => {

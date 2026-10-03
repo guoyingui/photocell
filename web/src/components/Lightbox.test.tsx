@@ -1,10 +1,13 @@
-import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Lightbox } from './Lightbox';
 import { useMarks } from '../store/marks';
 import { useView } from '../store/view';
 import { originalUrl, thumbUrl } from '../lib/thumbSource';
 import type { Asset } from '../types';
+import { setSession } from '../store/session';
+
+vi.mock('../lib/api', async (original) => ({ ...await original<typeof import('../lib/api')>(), putJSON: vi.fn(async () => ({})) }));
 
 const ASSET: Asset = {
   id: 'IMG_0002', dir: '', stem: 'IMG_0002',
@@ -26,11 +29,12 @@ const renderLightbox = () => render(<Lightbox order={ORDER} byId={BY_ID} />);
 beforeEach(() => {
   useMarks.getState().load({});
   useView.getState().reset();
+  setSession({ kind: 'admin', user: null });
 });
 
 // 本仓库没有 test.globals，testing-library 的自动 cleanup 不会注册，
 // 不写这一句 DOM 会跨用例泄漏。
-afterEach(() => { cleanup(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('Lightbox', () => {
   it('lightbox 为空时什么都不渲染', () => {
@@ -82,6 +86,33 @@ describe('Lightbox', () => {
 
     fireEvent.doubleClick(stage);
     expect(img().getAttribute('src')).toBe(originalUrl('IMG_0002'));
+  });
+
+  it('100% 使用完整图的真实像素，恢复贴合后仍可用鼠标标记', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 1000, height: 800,
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 800, toJSON: () => ({}) });
+    useView.getState().openLightbox('IMG_0002');
+    const { container } = renderLightbox();
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    const image = container.querySelector('img')!;
+    Object.defineProperties(image, { naturalWidth: { value: 6000 }, naturalHeight: { value: 4000 } });
+    fireEvent.load(image);
+    expect(image.style.width).toBe('1000px');
+    expect(image.style.transform).toContain('scale(6)');
+    expect(screen.getByText('100% · 6000 × 4000')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '贴合窗口' }));
+    expect(container.querySelector('img')!.style.transform).toContain('scale(1)');
+    fireEvent.click(screen.getByRole('button', { name: '收藏（P）' }));
+    expect(useMarks.getState().marks.IMG_0002).toBe('pick');
+  });
+  it('鼠标翻页不越界，只读访客没有标记按钮', () => {
+    setSession({ kind: 'user', user: { id: 'viewer', nickname: '访客', role: 'viewer' } });
+    useView.getState().openLightbox('IMG_0002');
+    renderLightbox();
+    expect(screen.queryByRole('button', { name: '收藏（P）' })).toBeNull();
+    expect((screen.getByRole('button', { name: '上一张照片' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '下一张照片' }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => useView.getState().closeLightbox());
   });
 });
 

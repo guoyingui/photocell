@@ -1,8 +1,9 @@
-import { cleanup, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toast } from './Toast';
 import { useMarks } from '../store/marks';
 import { clearToast, showToast } from '../store/notice';
+import { setSession } from '../store/session';
 
 // 三条提示共用同一个角落，同时只能显示一条，所以「谁压过谁」是一个设计决定
 // 而不是实现细节：错误 > 一次性提示 > 撤销提示。三条用例各钉住一档，
@@ -10,6 +11,7 @@ import { clearToast, showToast } from '../store/notice';
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })));
   useMarks.getState().load({});
+  setSession({ kind: 'admin', user: null });
   clearToast();
 });
 
@@ -43,5 +45,14 @@ describe('Toast 的优先级', () => {
     expect(container.querySelector('.toast-error')).toBeTruthy();
     expect(container.textContent).toContain('隐藏未能保存：写不进去');
     expect(container.textContent).not.toContain('已标记的照片不能隐藏');
+  });
+
+  it('权限改为只读后撤销提示不再提供写入按钮', () => {
+    setSession({ kind: 'user', user: { id: 'guest', nickname: '访客', role: 'editor' } });
+    useMarks.getState().setMark(['a'], 'pick');
+    const { queryByRole } = render(<Toast />);
+    expect(queryByRole('button', { name: /撤销/ })).toBeTruthy();
+    act(() => setSession({ user: { id: 'guest', nickname: '访客', role: 'viewer' } }));
+    expect(queryByRole('button', { name: /撤销/ })).toBeNull();
   });
 });

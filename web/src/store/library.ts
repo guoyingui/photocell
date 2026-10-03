@@ -6,6 +6,9 @@ import { useView } from './view';
 import { useMarks } from './marks';
 import { clearToast } from './notice';
 import { useSession } from './session';
+import { useReview } from './review';
+import { useAnnotations } from './annotations';
+import { useSelection } from './selection';
 import { CELL_WIDTH_MIN, CELL_WIDTH_MAX, type Asset, type AssetMeta, type Mark, type Settings } from '../types';
 
 /**
@@ -45,6 +48,8 @@ interface MarksResult {
   hidden?: unknown;
   /** 每人各投过什么票。服务端只给管理员下发，访客那边这个字段整个不存在。 */
   contrib?: unknown;
+  finalMarks?: unknown;
+  finalRevision?: number;
 }
 
 interface LibraryState {
@@ -59,7 +64,7 @@ interface LibraryState {
   /** 主标记文件损坏、从 marks.bak.json 恢复过。规格 §7 要求明确提示。 */
   marksRecovered: boolean;
   metaDone: boolean;
-  bake: { done: number; total: number };
+  bake: { done: number; total: number; running?: boolean };
   /**
    * 扫描到目前为止**累计**碰过的**文件**数（SSE `scan` 事件的 `found`）。
    *
@@ -150,6 +155,9 @@ let openEpoch = 0;
 
 /** 库以外的三份跨文件夹状态。必须和 useLibrary 的复位在同一个同步代码段里跑完。 */
 function resetClientState() {
+  useAnnotations.getState().reset();
+  useReview.getState().reset();
+  useSelection.getState().reset();
   useView.getState().reset();
   useMarks.getState().load({});
   // 阻断状态与在线名单都是上一条流派生出来的，换文件夹时一起归零；
@@ -225,6 +233,13 @@ export const useLibrary = create<LibraryState>((set, get) => ({
         // 的 id）。只给访客接线的话，客户在浏览器中标的那些片，摄影师屏幕上要等到
         // 换一次文件夹才看得见。
         if (handleRealtimeEvent(event)) return;
+        if (event.type === 'settings') {
+          set({ settings: event.settings });
+          if (useView.getState().threshold !== event.settings.burstThresholdMs) {
+            useView.getState().setThreshold(event.settings.burstThresholdMs);
+          }
+          return;
+        }
         if (event.type === 'scan') {
           // found 是**文件**数（不是资产数、也不是增量），照服务端的口径原样存。
           set({
@@ -254,7 +269,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
         } else if (event.type === 'metaDone') {
           set({ metaDone: true, streamError: null });
         } else if (event.type === 'bake') {
-          set({ bake: { done: event.done, total: event.total }, streamError: null });
+          set({ bake: { done: event.done, total: event.total, running: event.running }, streamError: null });
         } else if (event.type === 'error') {
           set({ streamError: '与服务器的实时连接中断，进度可能已停止更新' });
           // 还在等扫描结束的话，这条流就是唯一的完成信号——断了就再也等不到了。
@@ -288,11 +303,12 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
       // 归属表、hidden 都跟标记一起进 store：这是它们唯一的数据来源。
       // 旧文件夹没有这两个字段，marks store 按空表/空集处理。
-      useMarks.getState().load(loaded.marks, loaded.marksMeta, loaded.hidden, loaded.contrib);
-      useView.getState().setThreshold(info.settings.burstThresholdMs);
+      useMarks.getState().load(loaded.marks, loaded.marksMeta, loaded.hidden, loaded.contrib, loaded.finalMarks, loaded.finalRevision);
+      const settings = loaded.settings ?? info.settings;
+      useView.getState().setThreshold(settings.burstThresholdMs);
 
       set({
-        root: info.root, sessionId: info.sessionId, assets: lib.assets, settings: info.settings,
+        root: info.root, sessionId: info.sessionId, assets: lib.assets, settings,
         warnings: lib.warnings ?? [], skippedFiles: lib.skippedFiles ?? 0,
         marksRecovered: info.marksRecovered, phase: 'ready',
       });

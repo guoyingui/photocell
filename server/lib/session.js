@@ -358,7 +358,7 @@ async function runScan(session) {
     session.warnings = warnings;
     session.skippedFiles = skippedFiles;
     session.byId = new Map(assets.map((a) => [a.id, a]));
-    session.bake.total = assets.filter((a) => a.jpg).length;
+    session.bake.total = assets.filter((a) => a.jpg || a.raws?.length).length;
     session.scan.done = true;
     emit(session, { type: 'scan', found: session.scan.found, done: true });
 
@@ -519,7 +519,7 @@ export async function rescanSession(session) {
       session.warnings = warnings;
       session.skippedFiles = skippedFiles;
       session.byId = new Map(assets.map((a) => [a.id, a]));
-      session.bake = { done: 0, total: assets.filter((a) => a.jpg).length, running: false };
+      session.bake = { done: 0, total: assets.filter((a) => a.jpg || a.raws?.length).length, running: false };
       session.metaDone = false;
       // metas 刻意**不清空**：已经读出来的 EXIF 不会因为重扫而失效，
       // 清掉只会让三千张照片的元数据白读一遍。消失资产的条目留着无害。

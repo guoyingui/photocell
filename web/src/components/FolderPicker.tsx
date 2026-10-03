@@ -1,9 +1,10 @@
 import { useState, type DragEvent as ReactDragEvent } from 'react';
 import { useLibrary } from '../store/library';
 import { forgetRecent, readRecent, rememberRecent } from '../lib/recent';
-import { folderNameFromDrop, locate, type DropHit } from '../lib/dropLocate';
+import { absoluteFolderFromDrop, folderNameFromDrop, locate, type DropHit } from '../lib/dropLocate';
 import { DirBrowser } from './DirBrowser';
 import { ThemeToggle } from './ThemeToggle';
+import { NativeFolderButton } from './NativeFolderButton';
 
 export function FolderPicker() {
   const [here, setHere] = useState('');
@@ -31,6 +32,9 @@ export function FolderPicker() {
     e.preventDefault();
     setDropError(null);
     setDropNotice(null);
+    if (phase === 'scanning') return;
+    const absolute = absoluteFolderFromDrop(e.dataTransfer);
+    if (absolute) { void choose(absolute); return; }
     const read = folderNameFromDrop(e.dataTransfer);
     if ('error' in read) {
       setDropName(null);
@@ -52,8 +56,7 @@ export function FolderPicker() {
         <ThemeToggle />
       </div>
 
-      {/* 拖拽的落点：帮你定位，你点一下确认。浏览器不把绝对路径交给网页，
-          所以这里能做的上限就是把候选指出来——它从不替你打开任何东西。 */}
+      {/* 没有真实路径时只指出候选目录，由用户选择，同名不能作为直接打开的依据。 */}
       {dropError && <p className="picker-drop picker-drop-error">{dropError}</p>}
       {dropNotice && <p className="picker-drop">{dropNotice}</p>}
       {dropName && dropHit.kind !== 'none' && (
@@ -106,6 +109,7 @@ export function FolderPicker() {
       />
 
       <div className="picker-actions">
+        <NativeFolderButton disabled={phase === 'scanning'} onChoose={(path) => void choose(path)} />
         <button className="primary" onClick={() => here && void choose(here)}
                 disabled={!here || phase === 'scanning'}>
           {phase === 'scanning' ? '正在扫描…' : '打开当前文件夹'}

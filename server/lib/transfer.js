@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { isWithin, realpathDeep } from './safepath.js';
+import { assertWithin, isWithin, realpathDeep } from './safepath.js';
 import { csvRow } from './csv.js';
 
 export class TransferError extends Error {
@@ -88,6 +88,18 @@ export async function moveVerified(src, dest) {
 
 const joinRel = (root, dir, name) => path.join(root, ...String(dir).split('/').filter(Boolean), name);
 
+export const transferKey = (file) => JSON.stringify([file.id ?? file.asset.id, file.kind, file.name]);
+export function transferJobs(assets, marks, { includeJpg = false, onlyFiles } = {}) {
+  const jobs = [];
+  const allowed = onlyFiles ? new Set(onlyFiles) : null;
+  for (const asset of assets) {
+    if (marks[asset.id] !== 'pick') continue;
+    for (const name of asset.raws) jobs.push({ asset, name, kind: 'raw' });
+    if (includeJpg && asset.jpg) jobs.push({ asset, name: asset.jpg, kind: 'jpg' });
+  }
+  return allowed ? jobs.filter((job) => allowed.has(transferKey(job))) : jobs;
+}
+
 export const MANIFEST_HEADER =
   ['assetId', 'mark', 'rawFile', 'jpgFile', 'captureTime', 'exportedAs', 'status', 'note'];
 
@@ -115,7 +127,7 @@ export async function runExport(opts, hooks = {}) {
     includeJpg = false, jpgSubdir = '', flatten = false,
     mode = 'copy', manifest = false, metas = new Map(),
   } = opts;
-  const { onProgress, signal } = hooks;
+  const { onProgress, onFile, signal } = hooks;
 
   // isWithin 本身只做字符串层面的 path.resolve/path.relative 比较，不解析
   // 符号链接：如果 destRoot 是指向 root 内部某处的软链接，字符串比较会判定
@@ -152,15 +164,13 @@ export async function runExport(opts, hooks = {}) {
   const row = (asset, rawFile, exportedAs, status, note = '') =>
     manifestRows.push([asset.id, 'pick', rawFile, asset.jpg ?? '', captureTime(asset), exportedAs, status, note]);
 
-  const jobs = [];
+  const jobs = transferJobs(assets, marks, opts);
   const missingRaw = [];
   for (const asset of picked) {
-    if (asset.raws.length === 0) {
+    if (asset.raws.length === 0 && !opts.onlyFiles) {
       missingRaw.push(asset.id);
       row(asset, '', '', 'no-raw', '收藏了这一张，但文件夹里没有对应的 RAW 文件');
     }
-    for (const raw of asset.raws) jobs.push({ asset, name: raw, kind: 'raw' });
-    if (includeJpg && asset.jpg) jobs.push({ asset, name: asset.jpg, kind: 'jpg' });
   }
 
   const summary = {
@@ -170,7 +180,7 @@ export async function runExport(opts, hooks = {}) {
     // 的区别展示给摄影师，而不是让人去手工比对整个文件夹。
     skippedAssets: [], renamedAssets: [],
     missingRaw, errors: [], canceled: false, destRoot,
-    total: jobs.length,
+    total: jobs.length, files: [], records: [],
   };
 
   await fs.mkdir(destRoot, { recursive: true });
@@ -186,9 +196,13 @@ export async function runExport(opts, hooks = {}) {
     const subdir = job.kind === 'jpg' && jpgSubdir ? jpgSubdir : '';
     const dest = path.join(destRoot, subdir, ...relDir.split('/').filter(Boolean), job.name);
 
+    let result = { id: job.asset.id, dir: job.asset.dir, name: job.name, kind: job.kind, status: 'failed' };
     try {
+      await assertWithin([realRoot], src);
+      await assertWithin([realDestRoot], dest);
       const srcStat = await fs.stat(src);
       const plan = await planTarget(dest, srcStat);
+      await assertWithin([realDestRoot], plan.finalPath);
       let status;
 
       if (plan.action === 'skip') {
@@ -213,8 +227,11 @@ export async function runExport(opts, hooks = {}) {
         // 它记成"已导出"，否则打开 CSV 的摄影师会误以为每一行都是这次交付的。
         row(job.asset, job.name, path.relative(destRoot, plan.finalPath), status);
       }
+      result = { ...result, status, path: plan.finalPath };
     } catch (err) {
-      summary.errors.push({ id: job.asset.id, message: err.message });
+      result = { ...result, message: err.message,
+        ...(err instanceof MoveDeleteError ? { status: 'delete-failed', path: err.deliveredPath } : {}) };
+      summary.errors.push({ id: job.asset.id, file: job.name, message: err.message });
       if (job.kind === 'raw') {
         if (err instanceof MoveDeleteError) {
           // 文件已经正确送达，只是源文件没删掉——记成 failed 是漏报，
@@ -227,6 +244,10 @@ export async function runExport(opts, hooks = {}) {
       }
     }
 
+    summary.files.push(result);
+    // 文件已完成的结果先持久化，再报进度；写历史失败不能伪装成照片复制失败。
+    await onFile?.(result);
+
     done++;
     onProgress?.({
       done, total: jobs.length, currentFile: job.name,
@@ -238,6 +259,10 @@ export async function runExport(opts, hooks = {}) {
     // 取消之后还没轮到的收藏 RAW 也要出行——否则取消路径下的 manifest 只覆盖前半截，
     // 摄影师无法区分"这张没被处理"和"这张被漏记了"。
     for (const pending of jobs.slice(cursor)) {
+      const result = { id: pending.asset.id, dir: pending.asset.dir, name: pending.name,
+        kind: pending.kind, status: 'canceled', message: '任务被取消，这个文件没有被处理' };
+      summary.files.push(result);
+      await onFile?.(result);
       if (pending.kind === 'raw') {
         row(pending.asset, pending.name, '', 'canceled', '任务被取消，这个文件没有被处理');
       }
@@ -249,11 +274,11 @@ export async function runExport(opts, hooks = {}) {
   // "到底动了哪些文件"的路径，旧实现却偏偏是唯一不写记录的那一条。
   if (manifest) {
     const header = csvRow(MANIFEST_HEADER);
-    await writeRecordFile(
+    summary.records.push(await writeRecordFile(
       destRoot, 'manifest.csv',
       '\uFEFF' + header + manifestRows.map(csvRow).join(''),   // BOM 让 Excel 正确识别 UTF-8
-    );
-    await writeRecordFile(destRoot, 'rejected.txt', rejected.join('\n') + '\n');
+    ));
+    summary.records.push(await writeRecordFile(destRoot, 'rejected.txt', rejected.join('\n') + '\n'));
   }
 
   return summary;

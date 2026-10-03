@@ -6,8 +6,9 @@ import { requireSession } from './library.js';
 import { auditTargets } from './marks.js';
 import { logShareEvent } from './share.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { runExport, TransferError } from '../lib/transfer.js';
+import { runExport, TransferError, transferJobs, transferKey } from '../lib/transfer.js';
 import { resolveExportScope } from '../../shared/exportScope.js';
+import { saveExportHistory, readExportHistory, listExportHistory, appendExportResult, resolveRetriedFile, retryableFiles, historyCsv } from '../lib/exportHistory.js';
 
 export const exportRouter = express.Router();
 
@@ -75,14 +76,8 @@ function push(job, event) {
  * await 间隙被并发 PUT /api/library/marks 修改的活引用，否则这里数出来的
  * total 和真正搬文件时用的集合可能对不上。
  */
-function countJobs(assets, marks, { includeJpg }) {
-  let n = 0;
-  for (const asset of assets) {
-    if (marks[asset.id] !== 'pick') continue;
-    n += asset.raws.length;
-    if (includeJpg && asset.jpg) n += 1;
-  }
-  return n;
+function countJobs(assets, marks, options) {
+  return transferJobs(assets, marks, options).length;
 }
 
 /** 这次会动到多少**张照片**（`countJobs` 数的是文件，一张照片可能有两个 RAW）。 */
@@ -125,9 +120,40 @@ async function recordExportRun(req, { mode, dest, counts }) {
   }
 }
 
-exportRouter.post('/', requireAdmin, requireSession, async (req, res, next) => {
+function retryIsRunning(root, record) {
+  const familyId = record.familyId ?? record.id;
+  return [...jobs.values()].some((job) => !job.finished && job.root === root
+    && ((job.familyId ?? job.id) === familyId || job.parentId === record.id));
+}
+
+async function startExport(req, res, next) {
   try {
-    const body = req.body ?? {};
+    let body = req.body ?? {};
+    let retry = null;
+    let onlyFiles;
+    let retryAssets;
+    if (req.params.historyId) {
+      retry = await readExportHistory(req.session.root, req.params.historyId);
+      if (retryIsRunning(req.session.root, retry)) {
+        return res.status(409).json({ error: '这个任务仍在执行，请先等待完成或取消' });
+      }
+      const files = retryableFiles(retry);
+      if (!files.length) return res.status(400).json({ error: '没有失败或未完成的文件可重试' });
+      const grouped = new Map();
+      for (const file of files) {
+        if (typeof file.id !== 'string' || typeof file.dir !== 'string' || typeof file.name !== 'string'
+          || /[/\\]/.test(file.name) || ['.', '..', ''].includes(file.name) || !['raw', 'jpg'].includes(file.kind)) {
+          throw new TransferError('导出记录中的文件信息无效，请重新选择照片导出');
+        }
+        const asset = grouped.get(file.id) ?? { id: file.id, dir: file.dir, raws: [], jpg: null };
+        if (file.kind === 'raw') asset.raws.push(file.name); else asset.jpg = file.name;
+        grouped.set(file.id, asset);
+      }
+      retryAssets = [...grouped.values()];
+      onlyFiles = files.map(transferKey);
+      body = { ...retry.options, destRoot: body.destRoot ?? retry.destRoot,
+        mode: body.mode === 'move' ? 'move' : 'copy', confirmCount: body.confirmCount };
+    }
     const mode = body.mode === 'move' ? 'move' : 'copy';
     const includeJpg = body.includeJpg === true;
 
@@ -140,9 +166,9 @@ exportRouter.post('/', requireAdmin, requireSession, async (req, res, next) => {
     // 和传给 runExport 的 opts.marks 必须用同一份快照，不能分开取两次。
     // req.session.assets 不需要同样处理：它只在 openSession() 时被整体替换，不会
     // 被任何路由原地修改（marks.js 只碰 markStore，不碰 assets 数组本身）。
-    const { assets, marks } = resolveExportScope(
-      req.session.assets, req.session.markStore.data, body.scope,
-    );
+    const { assets, marks } = retryAssets
+      ? { assets: retryAssets, marks: Object.fromEntries(retryAssets.map((asset) => [asset.id, 'pick'])) }
+      : resolveExportScope(req.session.assets, req.session.markStore.data, body.scope);
 
     // jpgSubdir 是唯一一个会被原样 path.join 进目标路径的客户端字符串。destRoot 过了
     // assertWithin，拼接之后的 dest 却没有再校验一次——"../../../../tmp/x" 能直接
@@ -154,7 +180,7 @@ exportRouter.post('/', requireAdmin, requireSession, async (req, res, next) => {
     }
 
     const destRoot = await assertWithin(await browseRoots(), String(body.destRoot ?? ''));
-    const total = countJobs(assets, marks, { includeJpg });
+    const total = countJobs(assets, marks, { includeJpg, onlyFiles });
 
     // 导出目标不能落在源文件夹内部：runExport()（transfer.js）内部也会做同一个
     // 检查，那是它作为库函数对任意调用者的自我防御（inner 层），不是这里的冗余，
@@ -190,8 +216,13 @@ exportRouter.post('/', requireAdmin, requireSession, async (req, res, next) => {
       counts: { assets: countAssets(assets, marks), files: total },
     });
 
+    if (retry && retryIsRunning(req.session.root, retry)) {
+      return res.status(409).json({ error: '这个任务仍在执行，请先等待完成或取消' });
+    }
     const job = createJob(mode);
-    res.json({ jobId: job.id, total });
+    job.root = req.session.root;
+    job.parentId = retry?.id ?? null;
+    job.familyId = retry ? retry.familyId ?? retry.id : job.id;
 
     const opts = {
       root: req.session.root,
@@ -204,18 +235,77 @@ exportRouter.post('/', requireAdmin, requireSession, async (req, res, next) => {
       flatten: body.flatten === true,
       manifest: body.manifest !== false,
       mode,
+      onlyFiles,
     };
+
+    const record = {
+      version: 1, id: job.id, parentId: job.parentId, familyId: job.familyId, createdAt: Date.now(), finishedAt: null,
+      destRoot, mode, scope: retry ? { kind: 'retry', historyId: retry.id } : body.scope ?? { kind: 'all' },
+      options: { includeJpg, jpgSubdir, flatten: opts.flatten, manifest: opts.manifest },
+      status: 'running', summary: null, error: null,
+      files: transferJobs(assets, marks, opts).map(({ asset, name, kind }) => ({
+        id: asset.id, dir: asset.dir, name, kind, status: 'pending',
+      })),
+    };
+    try { await saveExportHistory(opts.root, record); }
+    catch (err) { jobs.delete(job.id); throw err; }
+    res.json({ jobId: job.id, total });
+    const fileIndexes = new Map(record.files.map((file, index) => [transferKey(file), index]));
+    const ancestors = new Map();
 
     runExport(opts, {
       signal: job.controller.signal,
       onProgress: (p) => push(job, { type: 'progress', ...p }),
-    }).then((summary) => {
+      onFile: async (file) => {
+        const index = fileIndexes.get(transferKey(file));
+        record.files[index] = file;
+        await appendExportResult(opts.root, record.id, file);
+        if (record.parentId) await resolveRetriedFile(opts.root, record.parentId, file, record.id, ancestors);
+      },
+    }).then(async (summary) => {
       job.summary = summary;
+      record.summary = summary;
+      record.status = summary.canceled ? 'canceled' : summary.errors.length ? 'partial' : 'complete';
+      record.finishedAt = Date.now();
+      await saveExportHistory(opts.root, record);
       finishJob(job, { type: 'done', summary });
-    }).catch((err) => {
+    }).catch(async (err) => {
       job.error = err.message;
-      finishJob(job, { type: 'error', message: err.message });
+      record.error = err.message; record.status = 'failed'; record.finishedAt = Date.now();
+      try { await saveExportHistory(opts.root, record); }
+      catch { job.error += '；历史记录未能完整保存，请核对目标目录'; }
+      finishJob(job, { type: 'error', message: job.error });
     });
+  } catch (err) { next(err); }
+}
+
+exportRouter.post('/', requireAdmin, requireSession, startExport);
+exportRouter.post('/history/:historyId/retry', requireAdmin, requireSession, startExport);
+
+function publicHistory(record) {
+  const active = jobs.get(record.id);
+  return { ...record, status: record.status === 'running' && !active ? 'interrupted' : record.status,
+    retryCount: retryableFiles(record).length };
+}
+
+exportRouter.get('/history', requireAdmin, requireSession, async (req, res, next) => {
+  try {
+    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+    const records = await listExportHistory(req.session.root);
+    res.json({ total: records.length, records: records.slice(offset, offset + 20).map((record) => {
+      const { files, summary, ...info } = publicHistory(record);
+      return { ...info, total: files.length, completed: files.filter((file) => file.resolvedBy || ['exported', 'renamed', 'skipped'].includes(file.status)).length };
+    }) });
+  } catch (err) { next(err); }
+});
+exportRouter.get('/history/:historyId', requireAdmin, requireSession, async (req, res, next) => {
+  try { res.json(publicHistory(await readExportHistory(req.session.root, req.params.historyId))); }
+  catch (err) { next(err); }
+});
+exportRouter.get('/history/:historyId/csv', requireAdmin, requireSession, async (req, res, next) => {
+  try {
+    const record = await readExportHistory(req.session.root, req.params.historyId);
+    res.type('text/csv').attachment(`photocull-export-${record.id}.csv`).send(historyCsv(record));
   } catch (err) { next(err); }
 });
 

@@ -1,8 +1,21 @@
 import { create } from 'zustand';
 import { putJSON } from '../lib/api';
-import type { FilterTab } from '../types';
+import type { FilterTab, PhotoFilters, ReviewFilter } from '../types';
+import type { OpinionFilter } from '../../../shared/opinions.js';
+import type { AnnotationFilters } from '../../../shared/annotations.js';
 
 interface ViewState {
+  annotationFilters: AnnotationFilters;
+  setAnnotationFilters: (patch: Partial<AnnotationFilters>) => void;
+  opinionFilter: OpinionFilter;
+  setOpinionFilter: (value: OpinionFilter) => void;
+  photoFilters: PhotoFilters;
+  reviewFilter: ReviewFilter;
+  infoOpen: boolean;
+  setPhotoFilters: (patch: Partial<PhotoFilters>) => void;
+  setReviewFilter: (value: ReviewFilter) => void;
+  toggleInfo: () => void;
+  clearFilters: () => void;
   tab: FilterTab;
   dirFilter: string | null;
   /**
@@ -47,7 +60,7 @@ interface ViewState {
   /**
    * 把 cursor / lightbox / selection 里已经不在 `ids` 中的成员清掉。
    *
-   * 刷新之后必须调一次。和 setTab / setDirFilter 清空 cursor 是同一类问题
+   * 刷新或实时筛选结果变化之后调用。和 setTab / setDirFilter 清空 cursor 是同一类问题
    * （见那两个 setter 的注释），只是这里的资产是**真的从磁盘上没了**，
    * 而不是暂时被筛掉——留着一个指向不存在文件的 cursor，下一次 P/X
    * 会往服务端发一个必然 400「未知资产」的请求。
@@ -56,6 +69,11 @@ interface ViewState {
 }
 
 const INITIAL = {
+  annotationFilters: { rating: '', label: '', stage: '', keyword: '' },
+  opinionFilter: 'all' as OpinionFilter,
+  photoFilters: { query: '', iso: '', fNumber: '', exposureTime: '', focalLength: '' },
+  reviewFilter: 'all' as ReviewFilter,
+  infoOpen: false,
   tab: 'all' as FilterTab,
   dirFilter: null,
   clientFilter: null,
@@ -74,6 +92,18 @@ const INITIAL = {
 
 export const useView = create<ViewState>((set, get) => ({
   ...INITIAL,
+  setAnnotationFilters: (patch) => set((s) => ({ annotationFilters: { ...s.annotationFilters, ...patch },
+    cursor: null, anchor: null, selection: new Set(), lightbox: null, compare: null })),
+  setOpinionFilter: (opinionFilter) => set({ opinionFilter, cursor: null, anchor: null,
+    selection: new Set(), lightbox: null, compare: null }),
+  setPhotoFilters: (patch) => set((s) => ({ photoFilters: { ...s.photoFilters, ...patch },
+    cursor: null, anchor: null, selection: new Set(), lightbox: null, compare: null })),
+  setReviewFilter: (reviewFilter) => set({ reviewFilter,
+    cursor: null, anchor: null, selection: new Set(), lightbox: null, compare: null }),
+  toggleInfo: () => set((s) => ({ infoOpen: !s.infoOpen })),
+  clearFilters: () => set({ tab: 'all', dirFilter: null, clientFilter: null,
+    photoFilters: { ...INITIAL.photoFilters }, annotationFilters: { ...INITIAL.annotationFilters }, reviewFilter: 'all', opinionFilter: 'all', cursor: null,
+    anchor: null, selection: new Set(), lightbox: null, compare: null }),
   setResolveVisible: (fn) => set({ resolveVisible: fn }),
 
   // 换文件夹是一次硬复位。这些字段每一个都是"上一个文件夹里的 id / 上一个文件夹
@@ -165,9 +195,7 @@ export const useView = create<ViewState>((set, get) => ({
     };
   }),
 
-  // 不碰 cursor/anchor：多选模式下勾选表达的是"这张我要"，不是"我看到这张"。
-  // 把光标一起挪走会让退回单选模式后的键盘导航停在最后勾的那张上，
-  // 而用户心里的位置还在他滚到的地方。
+  // 组合键点选只加减选区，保留光标和 Shift 范围选择的起点。
   toggleSelect: (id) => set((s) => {
     const selection = new Set(s.selection);
     if (selection.has(id)) selection.delete(id);

@@ -140,6 +140,59 @@ html.tauri .topbar a { -webkit-app-region: no-drag; }
 
 .app { display: flex; flex-direction: column; height: 100vh; }
 .app, .admin { min-width: 1024px; }
+.photo-tools { padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.photo-filters, .review-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.photo-filters label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.photo-search input { width: 260px; }
+.photo-filters select { max-width: 120px; }
+.review-progress { padding-top: 8px; font-size: 12px; color: var(--muted); }
+.review-progress progress { width: 130px; height: 8px; accent-color: var(--accent); }
+.review-progress button { padding: 4px 8px; }
+.selection-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); font-size: 12px; }
+.selection-bar label { display: flex; align-items: center; gap: 8px; }
+.selection-bar input { width: 280px; }
+.photo-note { margin-top: 18px; }
+.photo-note textarea { display: block; width: 100%; height: 90px; margin: 8px 0; resize: vertical; }
+.customer-selection { border: 1px solid var(--line); padding: 12px; border-radius: 6px; margin: 10px 0; }
+.customer-selection button { margin: 10px 8px 0 0; }
+.customer-selection p, .customer-selection li { overflow-wrap: anywhere; }
+.opinion-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.opinion-tools .tab { padding: 5px 8px; }
+.annotation-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.annotation-tools label { display: flex; align-items: center; gap: 6px; }
+.annotation-tools select, .annotation-tools input { padding: 5px 8px; }
+.annotation-tools input { width: 140px; }
+.annotation-editor { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.annotation-editor label { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.annotation-editor input, .annotation-editor select { width: 100%; }
+.share-network-control { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+.share-qr { width: 200px; height: 200px; display: block; background: #fff; }
+.cache-settings { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 8px; }
+.thumb-workflow { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.75); color: #fff; padding: 3px 6px; border-radius: 4px; font-size: 11px; border-left: 4px solid transparent; }
+.thumb-workflow[data-label="red"] { border-color: #ff6474; }
+.thumb-workflow[data-label="yellow"] { border-color: #ffdf65; }
+.thumb-workflow[data-label="green"] { border-color: #66d991; }
+.thumb-workflow[data-label="blue"] { border-color: #6fb5ff; }
+.thumb-workflow[data-label="purple"] { border-color: #cc94ff; }
+.opinion-info { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
+.photo-info { flex: 0 0 260px; width: 260px; padding: 16px; overflow-y: auto; border-left: 1px solid var(--line); background: var(--bg-2); }
+.photo-info-title { display: flex; align-items: center; justify-content: space-between; }
+.photo-info-title button { padding: 2px 8px; }
+.photo-info-name, .photo-info dd { overflow-wrap: anywhere; }
+.photo-info dt { color: var(--muted); font-size: 12px; margin-top: 14px; }
+.photo-info dd { margin: 4px 0 0; }
+.lightbox .photo-info { position: absolute; top: 56px; bottom: 110px; right: 0; z-index: 3; }
+.lightbox:has(.photo-info) .lb-stage { margin-right: 260px; }
+.thumb-seen { position: absolute; left: 7px; top: 7px; padding: 2px 5px; border-radius: 3px;
+  background: #111b; color: #fff; font-size: 10px; pointer-events: none; }
+.export-history-list { display: flex; flex-direction: column; gap: 8px; }
+.export-history-entry { border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.export-history-entry p { margin: 5px 0; overflow-wrap: anywhere; }
+.export-history-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.export-history-files { max-height: 240px; overflow: auto; margin-top: 10px; }
+.export-history-files table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.export-history-files th, .export-history-files td { border-bottom: 1px solid var(--line); text-align: left; padding: 6px; overflow-wrap: anywhere; }
+.export-history .progress { margin: 12px 0; }
 .history-actions { display: flex; gap: 4px; }
 .export-options { border: 0; padding: 0; margin: 0; min-width: 0; }
 .export-scope { padding: 10px 12px; border: 1px solid var(--accent); border-radius: 6px;
@@ -267,13 +320,13 @@ html.tauri .topbar a { -webkit-app-region: no-drag; }
   padding: 9px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
 .toast-error { border-color: var(--reject); color: var(--reject); }
 
-.lightbox { position: fixed; inset: 0; z-index: 100; background: #0b0b0eee;
+.lightbox { position: fixed; inset: 0; z-index: 100; min-width: 1024px; background: #0b0b0eee;
   display: flex; flex-direction: column; }
-.lb-stage { flex: 1; display: grid; place-items: center; overflow: hidden; cursor: zoom-in; }
+.lb-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; cursor: zoom-in; }
 /* transform-origin 的默认值就是 50% 50%，显式写出来是防止将来有人改掉它而
    不知道 lightboxZoom.ts 的数学依赖「缩放中心是几何中心」这件事。 */
 .lb-stage img {
-  max-width: 100%; max-height: 100%; object-fit: contain;
+  object-fit: contain;
   transform-origin: 50% 50%; will-change: transform;
 }
 
@@ -310,6 +363,9 @@ html.tauri .topbar a { -webkit-app-region: no-drag; }
   border-top: 1px solid var(--line); background: var(--bg-2); font-size: 13px; }
 .lb-bar .badge { position: static; }
 .lb-bar > .muted:last-of-type { margin-left: auto; }
+.lb-actions { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 16px; background: var(--bg-2); }
+.lb-message { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 10px 14px; background: var(--bg-2); border-radius: 6px; }
+.lb-message button { margin-left: 12px; }
 
 .modal { position: fixed; inset: 0; z-index: 90; background: #000000aa;
   display: grid; place-items: center; }

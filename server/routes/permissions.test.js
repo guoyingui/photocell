@@ -214,6 +214,24 @@ const ENDPOINTS = [
   { method: 'GET', path: '/api/library/stream', sse: true,
     admin: 200, editor: 200, viewer: 200, none: 401 },
   { method: 'GET', path: '/api/library/marks', admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'GET', path: '/api/library/review', admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'PUT', path: '/api/library/review', body: () => ({ ids: ['A'], seen: true }),
+    admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'GET', path: '/api/library/selection', admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'PUT', path: '/api/library/selection', body: () => ({ note: '我的备注' }),
+    denies: { admin: 'customer-only', viewer: 'read-only' },
+    admin: 403, editor: 200, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/library/selection/submit', body: () => ({ assetIds: [] }),
+    denies: { admin: 'customer-only', viewer: 'read-only' },
+    admin: 403, editor: 400, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/library/selections', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/library/selections/:userId/confirm', deny: 'admin-only',
+    url: () => '/api/library/selections/missing-customer/confirm',
+    admin: 404, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/library/selections/:userId/reopen', deny: 'admin-only',
+    url: () => '/api/library/selections/missing-customer/reopen',
+    admin: 404, editor: 403, viewer: 403, none: 401 },
   { method: 'GET', path: '/api/thumb', url: () => '/api/thumb?id=A&tier=grid',
     admin: 200, editor: 200, viewer: 200, none: 401 },
   { method: 'GET', path: '/api/original', url: () => '/api/original?id=A',
@@ -230,6 +248,8 @@ const ENDPOINTS = [
   { method: 'PUT', path: '/api/library/marks', deny: 'read-only',
     body: () => ({ marks: {} }),
     admin: 200, editor: 200, viewer: 403, none: 401 },
+  { method: 'PUT', path: '/api/library/final-marks', deny: 'admin-only', body: () => ({ marks: {} }),
+    admin: 200, editor: 403, viewer: 403, none: 401 },
 
   // ── 隐藏（Task 15）：admin-only，和导出同一档。隐藏改变的是所有人看到的照片
   //    集合，而且没有撤销入口——一个客户的手滑不该有这个权力，所以跟 editor
@@ -238,10 +258,42 @@ const ENDPOINTS = [
     body: () => ({ ids: [], hidden: true }),
     admin: 200, editor: 403, viewer: 403, none: 401 },
 
+  { method: 'GET', path: '/api/fs/native-folder', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/fs/native-folder', deny: 'admin-only', body: () => ({}),
+    admin: 400, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/library/cache', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'DELETE', path: '/api/library/cache', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/admin/share-qr', deny: 'admin-only',
+    url: () => '/api/admin/share-qr?id=missing-share', admin: 404, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/library/annotations', deny: 'read-only',
+    admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'PUT', path: '/api/library/annotations', deny: 'admin-only',
+    body: () => ({ ids: ['A'], patch: { rating: 4 } }),
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/preview-info', deny: 'read-only',
+    url: () => '/api/preview-info?id=A', admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'POST', path: '/api/export/xmp', deny: 'admin-only',
+    body: () => ({ assetIds: ['A'] }),
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+
   // ── 导出：访客永远不能导出，硬编码仅管理员，不是可配置开关
   { method: 'POST', path: '/api/export', deny: 'admin-only',
     body: () => ({ destRoot: out, mode: 'copy', manifest: false }),
     admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/export/history', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/export/history/:historyId', deny: 'admin-only',
+    url: () => `/api/export/history/${jobId}`,
+    admin: 404, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/export/history/:historyId/csv', deny: 'admin-only',
+    url: () => `/api/export/history/${jobId}/csv`,
+    admin: 404, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/export/history/:historyId/retry', deny: 'admin-only',
+    url: () => `/api/export/history/${jobId}/retry`,
+    admin: 404, editor: 403, viewer: 403, none: 401 },
   { method: 'GET', path: '/api/export/:jobId/stream', deny: 'admin-only',
     url: () => `/api/export/${jobId}/stream`,
     admin: 200, editor: 403, viewer: 403, none: 401 },
@@ -310,6 +362,8 @@ const ENDPOINTS = [
   //    （netaddrRouter，见 index.js），所以它跟上面九行一样是 admin-only：
   //    网卡地址是内网拓扑，而且这条接口是给摄影师拼分享链接用的——
   //    访客手里已经有链接了，没有任何理由问这个。
+  { method: 'PUT', path: '/api/admin/network', deny: 'admin-only', body: () => ({ enabled: false }),
+    admin: 503, editor: 403, viewer: 403, none: 401 },
   { method: 'GET', path: '/api/admin/netaddr', deny: 'admin-only',
     admin: 200, editor: 403, viewer: 403, none: 401 },
 ];
@@ -339,7 +393,7 @@ describe('权限矩阵（四种身份 x 全部 /api 端点）', () => {
         if (expected === 401) {
           expect((await res.json()).error, `${where} 的错误码`).toBe(endpoint.unauth ?? NO_ACTOR);
         } else if (expected === 403) {
-          expect((await res.json()).error, `${where} 的错误码`).toBe(endpoint.deny);
+          expect((await res.json()).error, `${where} 的错误码`).toBe(endpoint.denies?.[identity] ?? endpoint.deny);
         } else {
           // 200：不关心响应体，直接掐断（SSE 那两条永远不会自己结束）。
           ctrl.abort();

@@ -167,6 +167,8 @@ describe('ACTIONS', () => {
         'session.connect', 'session.disconnect',
         'mark.set', 'mark.bulk',
         'settings.update', 'export.run',
+        'selection.submit', 'selection.confirm', 'selection.reopen', 'selection.final',
+        'annotations.update', 'export.xmp',
       ]),
     );
   });

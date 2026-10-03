@@ -51,9 +51,9 @@ describe('startBake', () => {
     expect(files.filter((f) => f.endsWith('.webp'))).toHaveLength(6);
   });
 
-  it('total 不含没有 JPG 的资产', async () => {
+  it('total 包含纯 RAW，无法提取预览也能结束队列', async () => {
     const session = await openSession(tmp);
-    expect(session.bake.total).toBe(6);
+    expect(session.bake.total).toBe(7);
   });
 
   it('重复调用不会重复计数', async () => {
@@ -62,7 +62,7 @@ describe('startBake', () => {
     startBake(session);
     startBake(session);
     expect(await waitFor(() => session.bake.done === session.bake.total)).toBe(true);
-    expect(session.bake.done).toBe(6);
+    expect(session.bake.done).toBe(7);
   });
 
   it('通过 SSE 广播进度', async () => {
@@ -72,7 +72,7 @@ describe('startBake', () => {
     startBake(session);
     expect(await waitFor(() => session.bake.done === session.bake.total)).toBe(true);
     expect(seen.length).toBeGreaterThan(0);
-    expect(Math.max(...seen)).toBe(6);
+    expect(Math.max(...seen)).toBe(7);
   });
 
   it('stopBake 之后不再推进', async () => {
@@ -307,8 +307,8 @@ describe('prioritizeBake', () => {
 
     const order = getThumb.mock.calls.map(([, asset]) => asset.id);
     expect(new Set(order).size).toBe(order.length);   // 一个 id 都不重复
-    expect(order).toHaveLength(6);
-    expect(session.bake.done).toBe(6);
+    expect(order).toHaveLength(7);
+    expect(session.bake.done).toBe(7);
   });
 });
 

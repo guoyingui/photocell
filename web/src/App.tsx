@@ -19,6 +19,14 @@ import { Lightbox } from './components/Lightbox';
 import { ExportPanel } from './components/ExportPanel';
 import { CompareView } from './components/CompareView';
 import { useResumePosition } from './lib/useResumePosition';
+import { useVisiblePhotos } from './lib/useVisiblePhotos';
+import { usePhotoFilterGroups } from './lib/usePhotoFilters';
+import { useReviewProgress } from './lib/useReviewProgress';
+import { PhotoTools } from './components/PhotoTools';
+import { PhotoInfo } from './components/PhotoInfo';
+import { OpinionTools } from './components/OpinionTools';
+import { AnnotationTools } from './components/AnnotationTools';
+import { usePhotoAnnotations } from './lib/useAnnotations';
 
 export function App() {
   const phase = useLibrary((s) => s.phase);
@@ -51,15 +59,19 @@ export function App() {
   // 筛了人之后判据整个换掉：看的是**那个人自己那一票**，而不是这张照片此刻的
   // 有效标记。两者经常不一样——一张被妈妈改过的照片，有效标记是妈妈的，
   // 但「新娘收藏过的」里它仍然该出现。
-  const visibleGroups = useMemo(
+  const markedGroups = useMemo(
     () => (clientFilter === null
       ? filterGroups(groups, marks, tab, hidden)
       : filterGroupsByClient(groups, contrib, clientFilter, tab, hidden)),
     [groups, marks, tab, hidden, clientFilter, contrib],
   );
 
+  const visibleGroups = usePhotoFilterGroups(markedGroups);
+  useReviewProgress(phase === 'ready');
+  usePhotoAnnotations(phase === 'ready');
   const order = useMemo(() => flatOrder(visibleGroups, expanded), [visibleGroups, expanded]);
   const photoOrder = useMemo(() => visibleGroups.flatMap((group) => group.ids), [visibleGroups]);
+  useVisiblePhotos(photoOrder, phase === 'ready');
   useKeyboard(order, photoOrder);
   useResumePosition(root, phase === 'ready', assets, groups);
 
@@ -96,6 +108,9 @@ export function App() {
       if (!group || group.ids.length === 1) return id;
       return exp.has(group.key) ? id : group.ids[0];
     });
+    const view = useView.getState();
+    const focused = visibleGroups.find((group) => group.ids.includes(view.cursor ?? ''));
+    if (focused && focused.ids[0] !== view.cursor && !view.expanded.has(focused.key)) view.toggleExpand(focused.key);
   }, [visibleGroups, setResolveVisible]);
 
   if (phase !== 'ready') {
@@ -117,6 +132,9 @@ export function App() {
           时它自己渲染成 null——不开分享的单机流程界面因此完全不变。
           分享出去之后，"现在有没有人在看、谁是只读的"是摄影师最想知道的两件事。 */}
       <PresenceBar />
+      <PhotoTools groups={visibleGroups} order={photoOrder} />
+      <OpinionTools order={photoOrder} />
+      <AnnotationTools order={photoOrder} />
 
       <Notice
         marksRecovered={marksRecovered && !noticeRead}
@@ -127,10 +145,11 @@ export function App() {
       <div className="body">
         <Sidebar />
         <Grid groups={visibleGroups} order={order} />
+        <PhotoInfo id={useView.getState().cursor} />
       </div>
       <Lightbox order={order} byId={byId} />
       <CompareView order={photoOrder} byId={byId} />
-      <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} />
+      <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} visibleIds={photoOrder} />
       <Toast />
     </div>
   );

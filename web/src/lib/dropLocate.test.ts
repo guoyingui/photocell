@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { locate, folderNameFromDrop } from './dropLocate';
+import { absoluteFolderFromDrop, locate, folderNameFromDrop } from './dropLocate';
 
 describe('locate', () => {
   const recent = ['/Users/guoyg/照片/婚礼-小林', '/Volumes/CARD/DCIM'];
@@ -48,6 +48,14 @@ function fakeDT(entries: ({ name: string; isDirectory: boolean } | null)[]): Dat
 }
 
 describe('folderNameFromDrop', () => {
+  it('只有真实 file URI 可以直接打开，虚拟 entry 路径、远端与多个文件夹均拒绝', () => {
+    const dt = { ...fakeDT([{ name: '婚礼', isDirectory: true }]), getData: () => 'file:///Users/test/%E5%A9%9A%E7%A4%BC' } as DataTransfer;
+    expect(absoluteFolderFromDrop(dt)).toBe('/Users/test/婚礼');
+    expect(absoluteFolderFromDrop(fakeDT([{ name: '婚礼', isDirectory: true }]))).toBeNull();
+    expect(absoluteFolderFromDrop({ ...dt, getData: () => 'https://example.com/婚礼' } as DataTransfer)).toBeNull();
+    expect(absoluteFolderFromDrop({ ...dt, getData: () => 'file://other-host/婚礼' } as DataTransfer)).toBeNull();
+    expect(absoluteFolderFromDrop({ ...dt, getData: () => 'file:///D:/Photos/Wedding' } as DataTransfer)).toBe('D:\\Photos\\Wedding');
+  });
   it('拖入一个文件夹时取它的名字', () => {
     expect(folderNameFromDrop(fakeDT([{ name: '婚礼-小林', isDirectory: true }])))
       .toEqual({ name: '婚礼-小林' });

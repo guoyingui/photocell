@@ -12,6 +12,13 @@ import { libraryRouter } from './routes/library.js';
 import { marksRouter } from './routes/marks.js';
 import { imageRouter } from './routes/image.js';
 import { exportRouter } from './routes/export.js';
+import { reviewRouter } from './routes/review.js';
+import { selectionsRouter } from './routes/selections.js';
+import { annotationsRouter } from './routes/annotations.js';
+import { xmpRouter } from './routes/xmp.js';
+import { cacheRouter } from './routes/cache.js';
+import QRCode from 'qrcode';
+import { getShareById } from './lib/shares.js';
 import { shareRouter } from './routes/share.js';
 import { adminRouter } from './routes/admin.js';
 import { adminLogin, ADMIN_LOGIN_PATH } from './routes/adminlogin.js';
@@ -20,8 +27,9 @@ import {
 } from './middleware/auth.js';
 import { requireKnownHost } from './middleware/host.js';
 import { closeAllSessions } from './lib/session.js';
-import { setAdminToken } from './lib/actor.js';
+import { setAdminToken, isLoopback } from './lib/actor.js';
 import { lanAddresses } from './lib/netaddr.js';
+import { NetworkController } from './lib/network.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(here, 'public');
@@ -34,26 +42,26 @@ export const LOOPBACK_HOST = '127.0.0.1';
 export const ANY_HOST = '0.0.0.0';
 
 /**
- * 是否以 `--share` 启动。
+ * `--share` 启动配置，普通启动时由 NetworkController 管理临时分享监听。
  *
  * 默认 false，也就是**默认只监听回环**。这条默认值是整个程序里代价最高的一条：
  * 服务端能读本机任意路径、能在 move 模式下删除不可再生的 RAW，把它挂上局域网
  * 必须是摄影师显式做出的决定，而不是一个"开箱即用"的默认值替他做的。
  * 便利性在这里一律让路（规格 §9）。
  *
- * 写成模块级状态而不是 createApp 的参数，是因为读它的有两处：启动时决定绑哪个
- * 地址，以及 `/api/admin/netaddr` 告诉分享面板"现在到底能不能分享"。
- * 两处必须是同一个答案——面板显示着链接、服务端其实只绑了回环，
- * 是最难被发现的一种不一致（本机点开一切正常）。
+ * 默认只监听回环。界面开启分享必须由本机管理员明确点击，再建立独立局域网监听。
+ * netaddr 读取真实监听的状态和端口，面板不能展示仅本机可访问的地址作为客户链接。
  */
 let shareMode = false;
+let networkController = null;
+export function setNetworkController(controller) { networkController = controller; }
 
 export function setShareMode(on) {
   shareMode = on === true;
 }
 
 export function isShareMode() {
-  return shareMode;
+  return networkController ? networkController.enabled : shareMode;
 }
 
 /** 监听地址由 shareMode 唯一决定，不另留一个可以和它对不上的变量。 */
@@ -139,15 +147,38 @@ netaddrRouter.use(requireAdmin);
 
 netaddrRouter.get('/netaddr', (req, res) => {
   res.json({
-    // 面板据此决定是给出可分享的链接，还是提示"需要用 --share 重启"。
+    // 面板据此展示可分享链接，或提供本机开启入口。
     // 没开分享时给客户发一条 http://127.0.0.1:5183/s/xxx 是纯粹的挫败。
     share: isShareMode(),
-    // 端口取自这条连接本身，不取自某个记着启动端口的变量——
-    // listenWithFallback 会在端口被占用时换一个，记着的那份会过时。
-    port: req.socket?.localPort ?? null,
+    // 临时分享取独立监听的实际端口，--share 则取当前服务连接端口。
+    port: networkController?.port ?? req.socket?.localPort ?? null,
+    canControl: Boolean(networkController) && isLoopback(req),
     // 多网卡时全部列出，服务端不挑（见 netaddr.js 顶部注释）。
     addresses: lanAddresses(),
   });
+});
+
+netaddrRouter.put('/network', async (req, res, next) => {
+  if (!isLoopback(req)) return res.status(403).json({ error: 'local-only', message: '请在运行 PhotoCull 的电脑上调整局域网分享' });
+  if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: '请指定开启或关闭局域网分享' });
+  if (!networkController) return res.status(503).json({ error: '当前启动方式不支持调整分享，请使用 --share 启动' });
+  try {
+    await networkController.setEnabled(req.body.enabled);
+    res.json({ share: isShareMode(), port: networkController.port, canControl: true, addresses: lanAddresses() });
+  } catch (err) { next(err); }
+});
+
+netaddrRouter.get('/share-qr', async (req, res, next) => {
+  try {
+    const share = await getShareById(String(req.query.id ?? ''));
+    if (!share) return res.status(404).json({ error: '分享不存在，请刷新列表' });
+    if (!isShareMode()) return res.status(409).json({ error: '请先开启局域网分享' });
+    const address = lanAddresses().find((entry) => entry.address === req.query.address);
+    if (!address) return res.status(400).json({ error: '请选择当前可用的网络地址' });
+    const link = `${urlFor(address, networkController?.port ?? req.socket.localPort)}/s/${share.token}`;
+    const svg = await QRCode.toString(link, { type: 'svg', errorCorrectionLevel: 'M', margin: 4, width: 200 });
+    res.set({ 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" }).type('image/svg+xml').send(svg);
+  } catch (err) { next(err); }
 });
 
 /**
@@ -165,8 +196,13 @@ export const API_MOUNTS = [
   ['/api/fs', fsRouter],
   ['/api/library', libraryRouter],
   ['/api/library', marksRouter],
+  ['/api/library', reviewRouter],
+  ['/api/library', selectionsRouter],
+  ['/api/library', annotationsRouter],
+  ['/api/library', cacheRouter],
   ['/api', imageRouter],
   ['/api/export', exportRouter],
+  ['/api/export', xmpRouter],
   ['/api/share', shareRouter],
   ['/api/admin', adminRouter],
   ['/api/admin', netaddrRouter],
@@ -358,7 +394,7 @@ export function startupBanner({ share, url, addresses = [], adminToken = null } 
   } else {
     lines.push(
       '只监听本机 127.0.0.1，局域网里连不上，别人拿到这个地址也打不开。',
-      '要让别人一起选片，请用 npm start -- --share 重新启动。',
+      '可在界面「分享」中开启，或用 npm start -- --share 重新启动。',
     );
   }
 
@@ -414,7 +450,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   setShareMode(share);
   setAdminToken(adminToken);
 
-  const server = await listenWithFallback(createApp());
+  const app = createApp();
+  // --share 保留既有端口和部署方式；普通启动的临时分享使用独立监听。
+  const server = await listenWithFallback(app, 5183, 17, share ? ANY_HOST : LOOPBACK_HOST);
+  const network = share ? null : new NetworkController(app, server, listenWithFallback);
+  setNetworkController(network);
   // 打开的始终是回环地址：摄影师自己这台机器上，回环即管理员（规格 §9.3）。
   const url = `http://${LOOPBACK_HOST}:${server.address().port}`;
   console.log(startupBanner({
@@ -427,7 +467,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, async () => {
       await closeAllSessions();
-      server.close(() => process.exit(0));
+      if (network) await network.close();
+      else {
+        const closed = new Promise((resolve) => server.close(resolve));
+        server.closeAllConnections(); await closed;
+      }
+      process.exit(0);
     });
   }
 }

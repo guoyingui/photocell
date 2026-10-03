@@ -1,6 +1,7 @@
 import { useMarks } from '../store/marks';
 import { useSession } from '../store/session';
 import { useView } from '../store/view';
+import { useReview } from '../store/review';
 import type { Mark } from '../types';
 
 /**
@@ -102,6 +103,7 @@ export function applyMark(mark: Mark | null, opts: ApplyMarkOptions = {}): boole
   if (targets.length === 0) return false;
 
   useMarks.getState().setMark(targets, mark);
+  useReview.getState().setSeen(targets, true);
 
   const order = opts.order;
   if (!order) return true;

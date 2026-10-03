@@ -294,6 +294,7 @@ libraryRouter.get('/stream', requirePerm('read'), requireLiveSession, (req, res)
 
   // 补发快照，订阅者不会漏掉已发生的批次
   send({ type: 'meta', metas: [...session.metas.values()] });
+  send({ type: 'settings', settings: session.markStore.data.settings });
   if (session.metaDone) send({ type: 'metaDone' });
   send({ type: 'bake', ...session.bake });
   // 扫描进度也要进这套补发逻辑：一个文件夹只有一个会话、可以被多个客户端共享，

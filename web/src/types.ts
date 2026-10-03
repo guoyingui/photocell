@@ -34,3 +34,16 @@ export const CELL_WIDTH_MIN = 120;
 export const CELL_WIDTH_MAX = 420;
 
 export type FilterTab = 'all' | 'pick' | 'reject' | 'none' | 'hidden';
+
+export type MetaField = 'iso' | 'fNumber' | 'exposureTime' | 'focalLength';
+export type PhotoFilters = { query: string } & Record<MetaField, string>;
+export type ReviewFilter = 'all' | 'unseen' | 'seen' | 'undecided';
+
+export interface CustomerSelection {
+  userId: string; nickname: string; shareId: string; shareLabel: string;
+  status: 'draft' | 'submitted' | 'confirmed'; revision: number;
+  pickedIds: string[]; selectedCount: number; limit: number | null;
+  note: string; photoNotes: Record<string, string>;
+  submittedAt: number | null; confirmedAt: number | null; reopenedAt: number | null;
+  missingIds: string[];
+}

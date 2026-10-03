@@ -35,6 +35,12 @@ export const ACTIONS = Object.freeze([
   'mark.bulk',
   'settings.update',
   'export.run',
+  'selection.submit',
+  'selection.confirm',
+  'selection.reopen',
+  'selection.final',
+  'annotations.update',
+  'export.xmp',
 ]);
 
 // shareId 总是由 tokens.js 的 newId('sh') 生成，字符集固定是 base64url

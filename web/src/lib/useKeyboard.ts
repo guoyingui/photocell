@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useMarks } from '../store/marks';
 import { useSession } from '../store/session';
 import { useView } from '../store/view';
+import { useReview } from '../store/review';
 import { applyHidden, applyMark, markTargets } from './applyMark';
 import { showToast } from '../store/notice';
 import type { FilterTab, Mark } from '../types';
@@ -70,6 +71,10 @@ export function useKeyboard(order: string[], photoOrder: string[] = order) {
       };
 
       switch (e.key.toLowerCase()) {
+        case 'i': e.preventDefault(); view.toggleInfo(); return;
+        case 'v':
+          if (targets.length) { e.preventDefault(); useReview.getState().setSeen(targets, true); }
+          return;
         case 'c': {
           const ids = [...view.selection].filter((id) => visible.has(id));
           if (ids.length === 2) { e.preventDefault(); view.openCompare(ids[0], ids[1]); }
@@ -105,7 +110,7 @@ export function useKeyboard(order: string[], photoOrder: string[] = order) {
           if (view.cursor) { e.preventDefault(); view.openLightbox(view.cursor); }
           return;
         case ' ':
-          // 网格里空格 = 放大预览当前这一张（和大图里空格切 1:1 是两件事：
+          // 网格里空格 = 打开当前这一张（大图里空格切换贴合/放大：
           // Lightbox 用 capture + stopPropagation 先把它接走）。
           if (target?.closest('button, input, textarea, select')) return;
           if (view.lightbox) return;

@@ -171,6 +171,18 @@ describe('move 进行中拦截 beforeunload（分诊 b 前端半边）', () => {
 });
 
 describe('导出范围预览', () => {
+  it('参数和文件名筛选默认导出可见结果中的收藏，不导出隐藏在筛选外的收藏', async () => {
+    seedPicked(3);
+    useView.getState().setPhotoFilters({ query: 'a1', iso: '800' });
+    apiMock.postJSON.mockResolvedValue({ jobId: 'filtered', total: 1 });
+    render(<ExportPanel open onClose={() => {}} visibleIds={['a1']} />);
+    await setDest('/tmp/dest');
+    expect(screen.getByText('本次范围：当前筛选中的收藏')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '复制 1 个文件' }));
+    expect(apiMock.postJSON).toHaveBeenCalledWith('/api/export', expect.objectContaining({
+      scope: { kind: 'filtered', dir: null, tab: 'all', clientId: null, assetIds: ['a1'] },
+    }));
+  });
   it('按客户筛选时默认显示客户自己的收藏，并把范围交给服务端复核', async () => {
     seedPicked(2);
     useMarks.getState().load({ a0: 'reject', a1: 'pick' }, {}, [], {

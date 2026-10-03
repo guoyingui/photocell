@@ -36,7 +36,7 @@ async function saveStore(data) {
 // root 和 token 绝不能出现在这个列表里：改 root 等于把一条已经发出去的
 // 分享链接静默指向另一个文件夹；改 token 等于让旧链接失效却不留痕迹。
 const PATCHABLE_FIELDS = [
-  'label', 'expiresAt', 'defaultRole', 'allowUserCreation', 'maxUsers', 'showPeerMarks',
+  'label', 'expiresAt', 'defaultRole', 'allowUserCreation', 'maxUsers', 'showPeerMarks', 'selectionLimit',
 ];
 
 class ShareNotFoundError extends Error {
@@ -67,6 +67,7 @@ export async function createShare({
   // 一条昨天发出去的链接，今天客户打开发现别人的标记都不见了，摄影师
   // 既不知道为什么，也无从解释。
   showPeerMarks = true,
+  selectionLimit = null,
 } = {}) {
   return withFileLock(storePath(), async () => {
     const data = await loadStore();
@@ -84,6 +85,7 @@ export async function createShare({
       defaultRole,
       maxUsers,
       showPeerMarks,
+      selectionLimit,
     };
     data.shares[id] = share;
     await saveStore(data);

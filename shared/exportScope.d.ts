@@ -2,7 +2,7 @@ type Mark = 'pick' | 'reject';
 export type ExportScope =
   | { kind: 'all' }
   | { kind: 'client'; clientId: string }
-  | { kind: 'filtered'; clientId?: string | null; dir?: string | null; tab?: 'all' | 'pick' | 'reject' | 'none' | 'hidden' }
+  | { kind: 'filtered'; clientId?: string | null; dir?: string | null; tab?: 'all' | 'pick' | 'reject' | 'none' | 'hidden'; assetIds?: string[] }
   | { kind: 'selection'; assetIds: string[] };
 
 export function resolveExportScope<T extends { id: string; dir: string }>(

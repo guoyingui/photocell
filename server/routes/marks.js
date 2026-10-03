@@ -6,6 +6,7 @@ import { visibleMark } from '../lib/contrib.js';
 import { listShares, shareStatus } from '../lib/shares.js';
 import { normalizeCellWidth } from '../lib/store.js';
 import { logShareEvent } from './share.js';
+import { guardSelectionWrite, publishSelection } from '../lib/selections.js';
 
 export const marksRouter = express.Router();
 
@@ -59,6 +60,13 @@ function marksFor(actor, contrib) {
     if (mark !== null && mark !== undefined) marks[id] = mark;
   }
   return marks;
+}
+
+/** 客户只能拿到自己的原始意见，供重新打开页面和撤销使用。 */
+function ownContribFor(actor, contrib) {
+  return Object.fromEntries(Object.entries(contrib ?? {})
+    .filter(([, votes]) => votes[actor.user.id])
+    .map(([id, votes]) => [id, votes[actor.user.id]]));
 }
 
 /**
@@ -124,20 +132,24 @@ async function recordMarks(req, entries, before, actor) {
 }
 
 marksRouter.get('/marks', requirePerm('read'), requireSession, (req, res) => {
-  const { marks, settings, marksMeta, hidden, contrib } = req.session.markStore.data;
+  const { marks, settings, marksMeta, hidden, contrib, finalMarks, finalRevision } = req.session.markStore.data;
 
   if (!seesPeerMarks(req.actor)) {
     // 归属角标一并不给：它会把「这张是别的客户标的」原样说出来，
     // 等于绕过刚刚做的过滤。她自己那些标记的归属就是她自己，不必说。
-    return res.json({ marks: marksFor(req.actor, contrib), settings, marksMeta: {}, hidden });
+    const visible = marksFor(req.actor, contrib);
+    for (const [id, decision] of Object.entries(finalMarks)) visible[id] = decision.mark;
+    return res.json({ marks: visible, settings, marksMeta: {}, hidden, finalMarks, finalRevision,
+      ownContrib: ownContribFor(req.actor, contrib) });
   }
 
   // marksMeta / hidden 都是平行表，marks 的形状不变。
   // 老客户端读不到这两个字段也照常工作。
-  const full = { marks, settings, marksMeta, hidden };
+  const full = { marks, settings, marksMeta, hidden, finalMarks, finalRevision };
   // contrib 只给管理员：整张贡献表发给访客等于把上面那段过滤白做了，
   // 而按客户维度筛选本来也只有管理员那一侧用得到它。
   if (req.actor?.kind === 'admin') full.contrib = contrib;
+  else if (req.actor?.kind === 'user') full.ownContrib = ownContribFor(req.actor, contrib);
   return res.json(full);
 });
 
@@ -163,32 +175,34 @@ marksRouter.put('/marks', requirePerm('write'), requireSession, async (req, res,
     // 而不是按写入顺序散开几毫秒。
     const at = Date.now();
     // from 必须在动手之前取：写完再取只会拿到刚写进去的值。
-    const before = new Map(entries.map(([id]) => [id, req.session.markStore.data.marks[id] ?? null]));
+    let before;
     // 不变量 3（server/lib/store.js 的 setMark）：给一张已隐藏的照片打标记会让它
     // 自动退出 data.hidden。这个变化不会被下面的 marks 事件描述——那条事件说的是
     // 标记，不是隐藏——不广播的话，其他客户端本地那份 hidden 集合就此过期，会继续
     // 把一张实际已经不隐藏的照片挡在「全部/收藏/排除」之外，直到下一次全量重连补拉。
     // 同一个套路：动手前拍一份快照，动手后比对，只有真的变了才广播。
-    const hiddenBefore = new Set(req.session.markStore.data.hidden);
+    let hiddenBefore;
 
     // 受限访客的广播判据是「**她**看到的那个值有没有变」，所以要在动手之前
     // 为每条这样的连接各存一份旧的 visibleMark。不能复用上面那个 before：
     // 它存的是共编 marks 的旧值（审计日志的 from 用），而同一次写入对她意味着
     // 什么，取决于她自己有没有投过票——两者算出来的答案经常不一样。
-    const beforeVisible = new Map();
-    for (const listener of req.session.listeners) {
-      if (seesPeerMarks(listener.actor)) continue;
-      const uid = listener.actor.user.id;
-      const snap = new Map();
-      for (const [id] of entries) {
-        snap.set(id, visibleMark(req.session.markStore.data.contrib?.[id], uid));
+    let beforeVisible;
+    await guardSelectionWrite(req, entries, () => {
+      before = new Map(entries.map(([id]) => [id, req.session.markStore.data.marks[id] ?? null]));
+      hiddenBefore = new Set(req.session.markStore.data.hidden);
+      beforeVisible = new Map();
+      for (const listener of req.session.listeners) {
+        if (seesPeerMarks(listener.actor)) continue;
+        const uid = listener.actor.user.id;
+        const snap = new Map();
+        for (const [id] of entries) {
+          snap.set(id, visibleMark(req.session.markStore.data.contrib?.[id], uid));
+        }
+        beforeVisible.set(listener, snap);
       }
-      beforeVisible.set(listener, snap);
-    }
-
-    for (const [id, mark] of entries) {
-      req.session.markStore.setMark(id, mark, { by: actor.id, at });
-    }
+      for (const [id, mark] of entries) req.session.markStore.setMark(id, mark, { by: actor.id, at });
+    });
     // 落盘是防抖后台做的，这一批的结果这会儿还不知道；但**上一批**如果写失败了，
     // 错误就一直存在 markStore 里没人读——旧实现里它只有 close() 会看，中间几百次
     // PUT 全都无条件回 {ok:true}，摄影师在一个只读文件夹上标记三小时，界面全程显示
@@ -208,30 +222,41 @@ marksRouter.put('/marks', requirePerm('write'), requireSession, async (req, res,
       const contribNow = req.session.markStore.data.contrib;
 
       const openChanges = {};
-      for (const [id, mark] of entries) openChanges[id] = { mark, by: actor.id, at };
+      for (const [id] of entries) {
+        const current = req.session.markStore.data.marksMeta[id];
+        openChanges[id] = { mark: req.session.markStore.data.marks[id] ?? null,
+          by: current?.by ?? actor.id, at: current?.at ?? at };
+      }
+      const contribChanges = Object.fromEntries(entries.map(([id, mark]) => [id, { by: actor.id, mark, at }]));
 
       // 每条连接单独算一帧。判据是**她看到的值有没有变**，而不是「把值换成
       // 她该看到的那个、照发不误」——后者泄露的是时机：她那一格在别人操作的
       // 瞬间重渲染一次，等于告诉她「刚才有人动了这张」。
       emitPerListener(req.session, (listener) => {
+        const ownContribChanges = listener.actor.kind === 'user' && listener.actor.user.id === actor.id
+          ? Object.fromEntries(entries.map(([id, mark]) => [id, { mark, at }])) : undefined;
         if (seesPeerMarks(listener.actor)) {
-          return { type: 'marks', origin: actor.id, seq, changes: openChanges };
+          return { type: 'marks', origin: actor.id, seq, changes: openChanges,
+            ...(listener.actor.kind === 'admin' ? { contribChanges } : {}),
+            ...(ownContribChanges ? { ownContribChanges } : {}) };
         }
         const uid = listener.actor.user.id;
         const was = beforeVisible.get(listener);
         const changes = {};
         for (const [id] of entries) {
-          const now = visibleMark(contribNow?.[id], uid);
-          if (now === was?.get(id)) continue;   // 她看到的没变，这一帧对她不存在
+          const now = req.session.markStore.data.finalMarks[id]?.mark ?? visibleMark(contribNow?.[id], uid);
+          const previous = req.session.markStore.data.finalMarks[id]?.mark ?? was?.get(id);
+          if (now === previous) continue;   // 她看到的没变，这一帧对她不存在
           // **不带 by / at**：归属角标会把「这张是谁标的」原样说出来，等于
           // 绕过过滤。这和 GET 给她 marksMeta: {} 是同一个决定，两处必须一致，
           // 否则她刷新前后看到的角标不一样。前端 applyMarksBroadcast 只在
           // by/at 都在时才写 meta，缺了就自然什么都不动。
           changes[id] = { mark: now ?? null };
         }
-        return Object.keys(changes).length === 0
+        return Object.keys(changes).length === 0 && !ownContribChanges
           ? null                                 // null = 这条连接不发
-          : { type: 'marks', origin: actor.id, seq, changes };
+          : { type: 'marks', origin: actor.id, seq, changes,
+            ...(ownContribChanges ? { ownContribChanges } : {}) };
       });
 
       // data.hidden 只会因为这一批标记变短（不变量 3 只摘除，PUT /marks 从不新增
@@ -244,13 +269,42 @@ marksRouter.put('/marks', requirePerm('write'), requireSession, async (req, res,
       }
 
       await recordMarks(req, entries, before, actor);
+      if (req.actor.kind === 'user') await publishSelection(req.session, req.actor.user, req.actor.share);
     }
 
-    res.json({
-      ok: true,
-      marks: req.session.markStore.data.marks,
-      marksMeta: req.session.markStore.data.marksMeta,
+    const data = req.session.markStore.data;
+    const visible = seesPeerMarks(req.actor) ? data.marks : marksFor(req.actor, data.contrib);
+    if (!seesPeerMarks(req.actor)) for (const [id, decision] of Object.entries(data.finalMarks)) visible[id] = decision.mark;
+    res.json({ ok: true, marks: visible, finalRevision: data.finalRevision, marksMeta: seesPeerMarks(req.actor) ? data.marksMeta : {},
+      ...(req.actor.kind === 'admin' ? { contrib: data.contrib } : { ownContrib: ownContribFor(req.actor, data.contrib) }) });
+  } catch (err) { next(err); }
+});
+
+/** 摄影师的最终决定覆盖有效标记，保留每位客户原本的意见和提交。 */
+marksRouter.put('/final-marks', requireAdmin, requireSession, async (req, res, next) => {
+  try {
+    const patch = req.body?.marks;
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return res.status(400).json({ error: '请选择最终名单中的照片' });
+    for (const [id, mark] of Object.entries(patch)) {
+      if (!req.session.byId.has(id) || !VALID_MARK_VALUES.has(mark)) return res.status(400).json({ error: `无效的照片或决定：${id}` });
+    }
+    req.session.markStore.setFinalMarks(patch);
+    await req.session.markStore.flush();
+    const data = req.session.markStore.data;
+    emitPerListener(req.session, (listener) => {
+      const changes = {};
+      for (const id of Object.keys(patch)) {
+        const visible = seesPeerMarks(listener.actor) ? data.marks[id]
+          : data.finalMarks[id]?.mark ?? visibleMark(data.contrib[id], listener.actor.user.id);
+        changes[id] = { mark: visible ?? null, ...(seesPeerMarks(listener.actor) ? data.marksMeta[id] : {}) };
+      }
+      return { type: 'final-marks', finalMarks: data.finalMarks, finalRevision: data.finalRevision, changes, hidden: data.hidden };
     });
+    for (const share of await auditTargets(req)) await logShareEvent(share, {
+      actor: 'admin', action: 'selection.final', count: Object.keys(patch).length,
+      ...(Object.keys(patch).length <= BULK_ID_LIMIT ? { marks: patch } : {}),
+    });
+    res.json({ finalMarks: data.finalMarks, finalRevision: data.finalRevision, marks: data.marks, marksMeta: data.marksMeta, contrib: data.contrib });
   } catch (err) { next(err); }
 });
 
@@ -343,6 +397,10 @@ marksRouter.put('/settings', requireAdmin, requireSession, async (req, res, next
     // 原样记成 to，而实际落盘的是钳制后的值——日志会说谎。归一之后如果
     // 恰好和当前值相同，下面的 current[key] === value 会正确判定成没有变化。
     if ('cellWidth' in clean) clean.cellWidth = normalizeCellWidth(clean.cellWidth);
+    if ('burstThresholdMs' in clean && (!Number.isInteger(clean.burstThresholdMs)
+      || clean.burstThresholdMs < 0 || clean.burstThresholdMs > 10000)) {
+      return res.status(400).json({ error: '连拍间隔需为 0–10000 毫秒的整数' });
+    }
 
     // 变更前后的字段必须在动手之前算：setSettings 之后再取 from 只会拿到刚写进去的值。
     // 只把**真的变了**的字段记进 from/to，口径与 admin.js 的 share.update 一致——
@@ -366,6 +424,8 @@ marksRouter.put('/settings', requireAdmin, requireSession, async (req, res, next
       }
     }
 
+    await req.session.markStore.flush();
+    emit(req.session, { type: 'settings', settings: req.session.markStore.data.settings });
     res.json({ ok: true, settings: req.session.markStore.data.settings });
   } catch (err) { next(err); }
 });

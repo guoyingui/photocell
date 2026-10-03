@@ -9,6 +9,7 @@ import { readPosition, rememberPosition } from './resume';
 export function useResumePosition(root: string | null, ready: boolean, assets: Asset[], groups: Group[]) {
   const restored = useRef<string | null>(null);
   useEffect(() => {
+    restored.current = null;
     if (!root || !ready) return;
     const id = readPosition(root);
     if (id && assets.some((asset) => asset.id === id) && !useMarks.getState().hidden.has(id)

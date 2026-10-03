@@ -50,7 +50,7 @@ function makeShare(overrides: Partial<ShareFixture> = {}): ShareFixture {
   };
 }
 
-function mockNetaddr(overrides: Partial<{ share: boolean; port: number | null; addresses: unknown[] }> = {}) {
+function mockNetaddr(overrides: Partial<{ share: boolean; port: number | null; addresses: unknown[]; canControl: boolean }> = {}) {
   return { share: false, port: 5183, addresses: [], ...overrides };
 }
 
@@ -83,6 +83,30 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 计划 Task 18 给出的四条用例
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('界面分享开关与二维码', () => {
+  it('本机主动开启后才显示地址与二维码，关闭后隐藏链接', async () => {
+    const addresses = [{ address: '192.168.1.5', family: 'IPv4', interface: 'en0' }];
+    wireGetJSON([makeShare()], mockNetaddr({ canControl: true, addresses }));
+    apiMock.putJSON.mockResolvedValueOnce(mockNetaddr({ canControl: true, share: true, port: 5184, addresses }))
+      .mockResolvedValueOnce(mockNetaddr({ canControl: true, share: false, addresses }));
+    render(<SharePanel open onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: '开启局域网分享' }));
+    const radio = await screen.findByRole('radio', { name: '192.168.1.5' }); fireEvent.click(radio);
+    expect(screen.getByText(`http://192.168.1.5:5184/s/${makeShare().token}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '二维码' }));
+    expect(screen.getByRole('img', { name: '分享链接二维码' }).getAttribute('src')).toBe('/api/admin/share-qr?id=sh_1&address=192.168.1.5');
+    fireEvent.click(screen.getByRole('button', { name: '关闭局域网分享' }));
+    await screen.findByRole('button', { name: '开启局域网分享' }); expect(screen.queryByRole('img', { name: '分享链接二维码' })).toBeNull();
+    expect(apiMock.putJSON.mock.calls).toEqual([['/api/admin/network', { enabled: true }], ['/api/admin/network', { enabled: false }]]);
+  });
+  it('开启失败保持未分享状态并展示失败原因', async () => {
+    wireGetJSON([], mockNetaddr({ canControl: true })); apiMock.putJSON.mockRejectedValueOnce(new Error('分享端口被占用'));
+    render(<SharePanel open onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: '开启局域网分享' }));
+    await screen.findByText('分享端口被占用'); expect(screen.getByRole('button', { name: '开启局域网分享' })).toBeTruthy();
+  });
+});
 
 describe('关闭按钮', () => {
   it('标题行右侧有固定的关闭按钮', async () => {
