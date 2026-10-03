@@ -359,6 +359,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     // 本地复位跟服务端成不成功无关，失败只是额外多一条提示。
     let failure: string | null = null;
     let blocked: LibraryState['closeBlocked'] = null;
+    let retained = false;
     try {
       // 不带 force 时请求体里连这个字段都没有：默认落点是不踢人。
       await postJSON('/api/library/close', force ? { force: true } : {});
@@ -372,14 +373,19 @@ export const useLibrary = create<LibraryState>((set, get) => ({
         };
       } else {
         failure = e.message;
+        retained = e.status === 409 && e.code === 'move-in-progress';
       }
     }
     if (myEpoch !== openEpoch) return;
 
     // 被拒绝：本地状态**一个字段都不动**（库还开着、流还连着、标记还在），
-    // 只多一条待确认的提示。确认之后 TopBar 会再调一次 close(true)。
+    // 只多一条待确认的提示。目录管理收到确认之后再调一次 close(true)。
     if (blocked) {
       set({ closeBlocked: blocked });
+      return;
+    }
+    if (retained) {
+      set({ error: failure, errorDetail: null, closeBlocked: null });
       return;
     }
 

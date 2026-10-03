@@ -148,7 +148,7 @@ export function ExportPanel({ open, onClose, visibleIds }: { open: boolean; onCl
     setClientId(view.clientFilter ?? 'admin');
     setScopeKind(view.selection.size > 1 ? 'selection'
       : view.dirFilter !== null || view.tab !== 'all' || Object.values(view.photoFilters).some(Boolean)
-        || view.reviewFilter !== 'all' || view.opinionFilter !== 'all' || Object.values(view.annotationFilters).some(Boolean) ? 'filtered'
+        || view.reviewFilter !== 'all' || view.opinionFilter !== 'all' || view.matchedIds !== null || Object.values(view.annotationFilters).some(Boolean) ? 'filtered'
         : view.clientFilter ? 'client' : 'all');
     setSummary(null);
     setProgress(null);

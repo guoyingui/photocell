@@ -22,7 +22,10 @@ export function usePhotoFilterAssets() {
   const contrib = useMarks((s) => s.contrib);
   const annotations = useAnnotations((s) => s.annotations);
   const annotationFilters = useView((s) => s.annotationFilters);
+  const matchedIds = useView((s) => s.matchedIds);
+  const matched = useMemo(() => matchedIds === null ? null : new Set(matchedIds), [matchedIds]);
   return useMemo(() => assets.filter((asset) => {
+    if (matched !== null && !matched.has(asset.id)) return false;
     if (!matchesPhoto(asset, metas.get(asset.id), filters)) return false;
     if (!matchesOpinion(contrib[asset.id], opinionFilter)) return false;
     if (!matchesAnnotation(annotations[asset.id], annotationFilters)) return false;
@@ -31,7 +34,7 @@ export function usePhotoFilterAssets() {
       || asset.id === compare?.reference || asset.id === compare?.candidate) return true;
     return reviewFilter === 'unseen' ? !reviewed.has(asset.id)
       : reviewed.has(asset.id) && (reviewFilter !== 'undecided' || marks[asset.id] === undefined);
-  }), [assets, metas, filters, reviewFilter, reviewed, marks, lightbox, compare, opinionFilter, contrib, annotations, annotationFilters]);
+  }), [assets, metas, filters, reviewFilter, reviewed, marks, lightbox, compare, opinionFilter, contrib, annotations, annotationFilters, matched]);
 }
 
 export function usePhotoFilterGroups(groups: Group[]): Group[] {

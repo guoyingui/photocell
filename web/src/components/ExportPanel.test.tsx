@@ -171,6 +171,18 @@ describe('move 进行中拦截 beforeunload（分诊 b 前端半边）', () => {
 });
 
 describe('导出范围预览', () => {
+  it('文件名匹配清单默认只导出清单中的收藏', async () => {
+    seedPicked(3);
+    useView.setState({ matchedIds: ['a1'] });
+    apiMock.postJSON.mockResolvedValue({ jobId: 'j1' });
+    render(<ExportPanel open onClose={() => {}} visibleIds={['a1']} />);
+    await setDest('/tmp/dest');
+    expect(screen.getByText('本次范围：当前筛选中的收藏')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /复制 1 个文件/ }));
+    await vi.waitFor(() => expect(apiMock.postJSON).toHaveBeenCalledWith('/api/export', expect.objectContaining({
+      scope: { kind: 'filtered', dir: null, tab: 'all', clientId: null, assetIds: ['a1'] },
+    })));
+  });
   it('参数和文件名筛选默认导出可见结果中的收藏，不导出隐藏在筛选外的收藏', async () => {
     seedPicked(3);
     useView.getState().setPhotoFilters({ query: 'a1', iso: '800' });

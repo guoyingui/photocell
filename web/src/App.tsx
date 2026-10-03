@@ -7,12 +7,16 @@ import { groupBursts } from './lib/bursts';
 import { flatOrder } from './lib/order';
 import { useKeyboard } from './lib/useKeyboard';
 import { setSession } from './store/session';
-import { readRecent } from './lib/recent';
+import { useFolders } from './store/folders';
+import { useFolderActions } from './lib/useFolderActions';
 import { FolderPicker } from './components/FolderPicker';
 import { Grid } from './components/Grid';
 import { PresenceBar } from './components/PresenceBar';
 import { TopBar } from './components/TopBar';
-import { Sidebar } from './components/Sidebar';
+import { LibrarySidebar } from './components/LibrarySidebar';
+import { ThemeToggle } from './components/ThemeToggle';
+import { GuestsOnlineConfirm } from './components/GuestsOnlineConfirm';
+import { SharePanel } from './components/SharePanel';
 import { Notice } from './components/Notice';
 import { Toast } from './components/Toast';
 import { Lightbox } from './components/Lightbox';
@@ -27,6 +31,8 @@ import { PhotoInfo } from './components/PhotoInfo';
 import { OpinionTools } from './components/OpinionTools';
 import { AnnotationTools } from './components/AnnotationTools';
 import { usePhotoAnnotations } from './lib/useAnnotations';
+import { useSortedGroups } from './lib/useSortedGroups';
+import { FilterWorkspace } from './components/FilterWorkspace';
 
 export function App() {
   const phase = useLibrary((s) => s.phase);
@@ -36,12 +42,20 @@ export function App() {
   const skippedFiles = useLibrary((s) => s.skippedFiles);
   const scanFound = useLibrary((s) => s.scanFound);
   const marksRecovered = useLibrary((s) => s.marksRecovered);
+  const error = useLibrary((s) => s.error);
+  const errorDetail = useLibrary((s) => s.errorDetail);
+  const closeBlocked = useLibrary((s) => s.closeBlocked);
+  const folders = useFolders((s) => s.roots);
+  const directory = useFolderActions();
+  const [folderDialog, setFolderDialog] = useState(false);
+  const [revokeOpen, setRevokeOpen] = useState(false);
 
   const marks = useMarks((s) => s.marks);
   const hidden = useMarks((s) => s.hidden);
   const { tab, dirFilter, clientFilter, threshold, expanded, setResolveVisible } = useView();
   const contrib = useMarks((s) => s.contrib);
   const [exportOpen, setExportOpen] = useState(false);
+  useEffect(() => { setExportOpen(false); }, [root]);
   // 提示条按文件夹记"已读"：换文件夹后新的提示必须重新显示一次。
   const [noticeReadFor, setNoticeReadFor] = useState<string | null>(null);
 
@@ -66,7 +80,7 @@ export function App() {
     [groups, marks, tab, hidden, clientFilter, contrib],
   );
 
-  const visibleGroups = usePhotoFilterGroups(markedGroups);
+  const visibleGroups = useSortedGroups(usePhotoFilterGroups(markedGroups));
   useReviewProgress(phase === 'ready');
   usePhotoAnnotations(phase === 'ready');
   const order = useMemo(() => flatOrder(visibleGroups, expanded), [visibleGroups, expanded]);
@@ -84,15 +98,6 @@ export function App() {
   // 单机流程连 P/X 都按不动——门禁做成默认拒绝的代价就是每一条合法路径
   // 都得自己报到，这里是本地路径的报到点。
   useEffect(() => { setSession({ kind: 'admin' }); }, []);
-
-  // 每次打开应用直接进入最近一次的文件夹。没有记录、或已经在扫描/已打开时不抢。
-  useEffect(() => {
-    const last = readRecent()[0];
-    if (!last) return;
-    const lib = useLibrary.getState();
-    if (lib.phase !== 'idle' || lib.root) return;
-    void lib.open(last);
-  }, []);
 
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
 
@@ -113,43 +118,62 @@ export function App() {
     if (focused && focused.ids[0] !== view.cursor && !view.expanded.has(focused.key)) view.toggleExpand(focused.key);
   }, [visibleGroups, setResolveVisible]);
 
-  if (phase !== 'ready') {
-    return (
-      <>
-        {phase === 'scanning' && <ScanProgress found={scanFound} />}
-        <FolderPicker />
-      </>
-    );
-  }
-
   const noticeRead = noticeReadFor === root;
 
   return (
-    <div className="app">
-      <TopBar onExport={() => setExportOpen(true)} order={photoOrder} />
+    <div className="app directory-app">
+      <LibrarySidebar onAdd={() => setFolderDialog(true)} onOpen={directory.open} onRemove={directory.remove} busyPath={directory.busyPath} />
+      <main className="library-main">
+        {phase === 'ready' ? <>
+          <TopBar onExport={() => setExportOpen(true)} order={photoOrder} />
 
-      {/* 在线成员条（规格 §7.5）。名单来自 SSE 的 presence 事件，一个人都没有
-          时它自己渲染成 null——不开分享的单机流程界面因此完全不变。
-          分享出去之后，"现在有没有人在看、谁是只读的"是摄影师最想知道的两件事。 */}
-      <PresenceBar />
-      <PhotoTools groups={visibleGroups} order={photoOrder} />
-      <OpinionTools order={photoOrder} />
-      <AnnotationTools order={photoOrder} />
+          {/* 在线成员条（规格 §7.5）。名单来自 SSE 的 presence 事件，一个人都没有
+              时它自己渲染成 null——不开分享的单机流程界面因此完全不变。
+              分享出去之后，"现在有没有人在看、谁是只读的"是摄影师最想知道的两件事。 */}
+          <PresenceBar />
+          <FilterWorkspace />
+          <PhotoTools groups={visibleGroups} order={photoOrder} />
+          <OpinionTools order={photoOrder} />
+          <AnnotationTools order={photoOrder} />
 
-      <Notice
-        marksRecovered={marksRecovered && !noticeRead}
-        skippedFiles={noticeRead ? 0 : skippedFiles}
-        onDismiss={() => setNoticeReadFor(root)}
-      />
+          <Notice
+            marksRecovered={marksRecovered && !noticeRead}
+            skippedFiles={noticeRead ? 0 : skippedFiles}
+            onDismiss={() => setNoticeReadFor(root)}
+          />
 
-      <div className="body">
-        <Sidebar />
-        <Grid groups={visibleGroups} order={order} />
-        <PhotoInfo id={useView.getState().cursor} />
-      </div>
-      <Lightbox order={order} byId={byId} />
-      <CompareView order={photoOrder} byId={byId} />
-      <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} visibleIds={photoOrder} />
+          <div className="body">
+            <Grid groups={visibleGroups} order={order} />
+            <PhotoInfo id={useView.getState().cursor} />
+          </div>
+          <Lightbox order={order} byId={byId} />
+          <CompareView order={photoOrder} byId={byId} />
+          <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} visibleIds={photoOrder} />
+        </> : <>
+          <header className="library-empty-header"><span>照片选片工作区</span><ThemeToggle /></header>
+          {phase === 'scanning' && <ScanProgress found={scanFound} />}
+          <div className="library-empty">
+            <h1>选择照片文件夹</h1>
+            <p className="muted">在左侧添加多个照片目录，点击目录开始选片。</p>
+            {phase === 'scanning' || directory.busyPath ? <p role="status">正在打开目录，请稍候…</p>
+              : <button className="primary" onClick={() => setFolderDialog(true)}>添加照片目录…</button>}
+          </div>
+        </>}
+        {error && <div className="library-error picker-error" role="alert"><strong>{error}</strong>
+          {errorDetail && <code>{errorDetail}</code>}
+          <div className="filter-actions">
+            {directory.failedRoot && <button disabled={directory.busyPath !== null} onClick={() => directory.open(directory.failedRoot!)}>重试打开目录</button>}
+            <button onClick={() => useLibrary.setState({ error: null, errorDetail: null })}>关闭提示</button>
+          </div>
+        </div>}
+      </main>
+      {folderDialog && <FolderPicker existing={folders} onClose={() => setFolderDialog(false)} onAdd={(roots) => {
+        useFolders.getState().add(roots);
+        if (useLibrary.getState().phase === 'idle' && roots[0]) directory.open(roots[0]);
+      }} />}
+      {closeBlocked && <GuestsOnlineConfirm message={closeBlocked.message} busy={directory.busyPath !== null}
+        onCancel={directory.cancel} onForce={directory.force} onRevoke={() => { directory.cancel(); setRevokeOpen(true); }} />}
+      {revokeOpen && <SharePanel open onClose={() => setRevokeOpen(false)} />}
       <Toast />
     </div>
   );

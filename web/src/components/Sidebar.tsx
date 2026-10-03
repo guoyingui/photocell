@@ -6,7 +6,7 @@ import { useMarks } from '../store/marks';
 import { useSession } from '../store/session';
 import { useView } from '../store/view';
 
-export function Sidebar() {
+export function Sidebar({ embedded = false }: { embedded?: boolean }) {
   const assets = useLibrary((s) => s.assets);
   const warnings = useLibrary((s) => s.warnings);
   // 逐字段订阅，避免和 TopBar 同样的问题：整体解构 useView() 会让 Sidebar
@@ -41,8 +41,8 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
-      <h2>文件夹</h2>
+    <aside className={embedded ? 'sidebar sidebar-embedded' : 'sidebar'} aria-label={embedded ? '当前目录的子文件夹' : '文件夹筛选'}>
+      <h2>{embedded ? '子文件夹' : '文件夹'}</h2>
       {/* 「全部」这一行必须和下面各目录行加总一致：用 dirs 的和而不是 assets.length，
           否则库里一有隐藏照片，这里就会比下面所有行加起来还大——跟 dirCounts 剔除
           隐藏资产是同一件事，只是这个聚合按钮不直接调 dirCounts，得自己再加一遍。 */}

@@ -40,8 +40,9 @@ beforeEach(() => {
   localStorage.clear();
   useLibrary.setState({
     phase: 'idle', root: null, assets: [], metas: new Map(), error: null, errorDetail: null,
-    scanFound: 0,
+    scanFound: 0, closeBlocked: null, refreshing: false, sessionId: null,
   });
+  useView.getState().reset();
   useMarks.getState().load({});
   setSession({ kind: 'none', user: null, share: null, online: [] });
 });
@@ -51,10 +52,12 @@ afterEach(() => {
 });
 
 describe('App smoke（jsdom 环境基线）', () => {
-  it('未打开文件夹时渲染文件夹选择器，不抛错', async () => {
+  it('未打开文件夹时仍显示主页面左侧目录列表和空状态', async () => {
     render(<App />);
     const heading = await screen.findByRole('heading', { name: '选择照片文件夹' });
     expect(heading.textContent).toBe('选择照片文件夹');
+    expect(screen.getByRole('navigation', { name: '已添加目录' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   // useKeyboard 的写门禁是**默认拒绝**的（session.canWrite() 对 kind:'none'
@@ -91,7 +94,7 @@ describe('App smoke（jsdom 环境基线）', () => {
   it('没人在线时不渲染成员条（单机流程界面不变）', async () => {
     useLibrary.setState({ phase: 'ready', root: '/tmp/A' });
     render(<App />);
-    await screen.findByRole('button', { name: /选择文件夹/ });
+    await screen.findByRole('button', { name: '＋ 添加目录' });
     expect(screen.queryByRole('list', { name: '成员' })).toBeNull();
   });
 });
@@ -128,7 +131,7 @@ describe('扫描进度条', () => {
   it('扫描完成后进度条消失', async () => {
     useLibrary.setState({ phase: 'ready', root: '/tmp/A', scanFound: 1234 });
     const { container } = render(<App />);
-    await screen.findByRole('button', { name: /选择文件夹/ });
+    await screen.findByRole('button', { name: '＋ 添加目录' });
     expect(container.querySelector('.scan-progress')).toBeNull();
   });
 
@@ -187,7 +190,7 @@ describe('按人筛选接进网格', () => {
     useView.getState().setClientFilter('u_bride');
     useView.getState().setTab('reject');
     render(<App />);
-    await screen.findByRole('button', { name: /选择文件夹/ });
+    await screen.findByRole('button', { name: '＋ 添加目录' });
     expect(isEmpty()).toBe(true);
   });
 
@@ -197,14 +200,14 @@ describe('按人筛选接进网格', () => {
     useView.getState().setClientFilter('u_bride');
     useView.getState().setTab('pick');
     render(<App />);
-    await screen.findByRole('button', { name: /选择文件夹/ });
+    await screen.findByRole('button', { name: '＋ 添加目录' });
     expect(isEmpty()).toBe(false);
   });
 
   it('筛一个谁都不是的人，网格是空的', async () => {
     useView.getState().setClientFilter('u_nobody');
     render(<App />);
-    await screen.findByRole('button', { name: /选择文件夹/ });
+    await screen.findByRole('button', { name: '＋ 添加目录' });
     expect(isEmpty()).toBe(true);
   });
 

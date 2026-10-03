@@ -15,6 +15,8 @@ import { useReviewProgress } from '../lib/useReviewProgress';
 import { PhotoTools } from '../components/PhotoTools';
 import { AnnotationTools } from '../components/AnnotationTools';
 import { usePhotoAnnotations } from '../lib/useAnnotations';
+import { useSortedGroups } from '../lib/useSortedGroups';
+import { FilterWorkspace } from '../components/FilterWorkspace';
 import { PhotoInfo } from '../components/PhotoInfo';
 import { SelectionBar } from '../components/SelectionBar';
 import {
@@ -230,7 +232,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
   );
   const markedGroups = useMemo(
     () => filterGroups(groups, marks, tab, hidden), [groups, marks, tab, hidden]);
-  const visibleGroups = usePhotoFilterGroups(markedGroups);
+  const visibleGroups = useSortedGroups(usePhotoFilterGroups(markedGroups));
   useReviewProgress(phase.kind === 'ready' && !blocked);
   usePhotoAnnotations(phase.kind === 'ready' && !blocked);
   const order = useMemo(() => flatOrder(visibleGroups, expanded), [visibleGroups, expanded]);
@@ -310,6 +312,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
           <span className="guest-me">{user?.nickname}</span>
         </div>
       </header>
+      <FilterWorkspace />
       <PhotoTools groups={visibleGroups} order={photoOrder} />
       <AnnotationTools order={photoOrder} />
       <SelectionBar ready={phase.kind === 'ready' && !blocked} />

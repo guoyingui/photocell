@@ -1,32 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { fireEvent } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TopBar } from './TopBar';
 import { useLibrary } from '../store/library';
 import { useMarks } from '../store/marks';
 import { useView } from '../store/view';
 import { setSession } from '../store/session';
-
-/**
- * 规格 §5.4：管理员在本地关闭一个仍有访客在线的库时，界面必须**明确告知**
- * "还有 N 位访客在线，链接仍然有效"，并给出**直达撤销的入口**。
- *
- * 修复之前"换文件夹"是直接生效的：`close()` 一按就把本地状态拆了，
- * 而服务端那一头会把包括访客在内的每一条 SSE 连接 end() 掉——正在浏览器中
- * 看图的客户当场掉线，界面上一个字的提示都没有。全仓库 grep 不到
- * "还有 N 位访客在线"这句话。
- *
- * 这一组用例钉的就是那块提示：文案原样来自服务端（store 里的 closeBlocked），
- * 三个出口（撤销 / 仍然关闭 / 取消）各自对应一个明确的动作。
- */
-
-// SharePanel 一挂载就会拉 /api/admin/shares 和 /api/admin/netaddr。这里要验的是
-// "撤销入口能不能打开它"，不是面板自己的内容，所以整个替身掉——真实实现在
-// SharePanel.test.tsx 上另有覆盖。
-vi.mock('./SharePanel', () => ({
-  SharePanel: ({ open }: { open: boolean }) =>
-    (open ? <div data-testid="share-panel" /> : null),
-}));
 
 const closeSpy = vi.fn();
 const dismissSpy = vi.fn();
@@ -46,12 +24,6 @@ function setLibrary(over: Partial<ReturnType<typeof useLibrary.getState>> = {}) 
   });
 }
 
-const BLOCKED = {
-  online: 2,
-  message: '还有 2 位访客在线，链接仍然有效。关闭文件夹只是你这一侧脱离，'
-    + '他们会当场掉线，但手里的链接不会失效——要真正结束访问，请到分享面板撤销这条链接。',
-};
-
 beforeEach(() => {
   closeSpy.mockClear().mockResolvedValue(undefined);
   dismissSpy.mockClear();
@@ -65,8 +37,6 @@ afterEach(() => {
   useLibrary.setState({ closeBlocked: null });
 });
 
-const changeFolder = () => screen.getByRole('button', { name: /选择文件夹/ });
-
 it('电脑端顶栏提供对比与历史操作，不再显示多选模式', () => {
   setSession({ kind: 'admin', user: null });
   render(<TopBar onExport={() => {}} />);
@@ -75,66 +45,10 @@ it('电脑端顶栏提供对比与历史操作，不再显示多选模式', () =
   expect(screen.getByRole('button', { name: '重做' })).toBeTruthy();
 });
 
-describe('TopBar：仍有访客在线时的「换文件夹」确认（规格 §5.4）', () => {
-  it('没有拦截时不显示任何确认，按钮直接调 close()', () => {
-    render(<TopBar onExport={() => {}} />);
-
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    fireEvent.click(changeFolder());
-    expect(closeSpy).toHaveBeenCalledTimes(1);
-    // 第一次按永远不带 force：踢不踢人由用户在确认框里说了算。
-    expect(closeSpy.mock.calls[0][0]).toBeUndefined();
-  });
-
-  it('store 里有拦截时，把服务端那句话原样显示出来', () => {
-    setLibrary({ closeBlocked: BLOCKED });
-    render(<TopBar onExport={() => {}} />);
-
-    // 没有装 @testing-library/jest-dom，用原生 textContent 断言（与 JoinGate.test.tsx 一致）。
-    const dialog = screen.getByRole('alertdialog');
-    expect(dialog.textContent).toContain('还有 2 位访客在线');
-    expect(dialog.textContent).toContain('链接仍然有效');
-  });
-
-  it('给出直达撤销的入口：点它就打开分享面板', () => {
-    setLibrary({ closeBlocked: BLOCKED });
-    render(<TopBar onExport={() => {}} />);
-
-    expect(screen.queryByTestId('share-panel')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '去撤销链接…' }));
-
-    expect(screen.getByTestId('share-panel')).toBeTruthy();
-    // 面板开了就说明这条提示已经被处理掉了，不该继续压在上面。
-    expect(dismissSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('「仍然关闭」带 force 再调一次 close', async () => {
-    setLibrary({ closeBlocked: BLOCKED });
-    render(<TopBar onExport={() => {}} />);
-
-    fireEvent.click(screen.getByRole('button', { name: /仍然关闭/ }));
-
-    await waitFor(() => expect(closeSpy).toHaveBeenCalledWith(true));
-  });
-
-  it('「取消」只清提示，不发任何请求', () => {
-    setLibrary({ closeBlocked: BLOCKED });
-    render(<TopBar onExport={() => {}} />);
-
-    fireEvent.click(screen.getByRole('button', { name: /^取消$/ }));
-
-    expect(dismissSpy).toHaveBeenCalledTimes(1);
-    expect(closeSpy).not.toHaveBeenCalled();
-  });
-
-  it('服务端没给人数时不显示成 NaN，照样把文案说出来', () => {
-    setLibrary({ closeBlocked: { online: null, message: '还有访客在线，链接仍然有效' } });
-    render(<TopBar onExport={() => {}} />);
-
-    const dialog = screen.getByRole('alertdialog');
-    expect(dialog.textContent).toContain('还有访客在线');
-    expect(dialog.textContent).not.toContain('NaN');
-  });
+it('目录管理已移到左侧，顶栏不再提供关闭目录的选择文件夹按钮', () => {
+  render(<TopBar onExport={() => {}} />);
+  expect(screen.queryByRole('button', { name: '选择文件夹' })).toBeNull();
+  expect(closeSpy).not.toHaveBeenCalled();
 });
 
 /**

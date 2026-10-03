@@ -44,10 +44,6 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
   const metas = useLibrary((s) => s.metas);
   const bake = useLibrary((s) => s.bake);
   const streamError = useLibrary((s) => s.streamError);
-  const close = useLibrary((s) => s.close);
-  // 服务端拒绝了这次"换文件夹"，因为该会话上还有访客在线（规格 §5.4）。
-  const closeBlocked = useLibrary((s) => s.closeBlocked);
-  const dismissCloseBlock = useLibrary((s) => s.dismissCloseBlock);
   const refresh = useLibrary((s) => s.refresh);
   const refreshing = useLibrary((s) => s.refreshing);
   const refreshResult = useLibrary((s) => s.refreshResult);
@@ -102,8 +98,6 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
 
   return (
     <header className="topbar">
-      <button className="btn-folder" onClick={() => void close()}>选择文件夹</button>
-
       {/* 刷新不退回选择器：旧网格继续显示到扫完。这是它和「换文件夹」
           最重要的区别，也是「选片过程中照片被移动或删除」这个场景要的东西。 */}
       {/* 只读时整个按钮不渲染：刷新是 admin-only
@@ -164,54 +158,6 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
       {selectionsOpen && <SelectionsPanel onClose={() => setSelectionsOpen(false)} />}
 
-      {closeBlocked && (
-        <GuestsOnlineConfirm
-          message={closeBlocked.message}
-          onRevoke={() => { dismissCloseBlock(); setShareOpen(true); }}
-          onForce={() => void close(true)}
-          onCancel={dismissCloseBlock}
-        />
-      )}
     </header>
-  );
-}
-
-/**
- * "还有 N 位访客在线"的确认框（规格 §5.4）。
- *
- * 三个出口，顺序就是推荐程度：
- *
- * 1. **去撤销链接**——规格要求的"直达撤销的入口"。这是唯一真正结束访问的动作：
- *    关掉文件夹只是摄影师这一侧脱离，客人手里那条链接还是有效的，
- *    他刷新一下、或者明天再点开，只要摄影师又打开了这个文件夹就又能看。
- * 2. **仍然关闭**——`danger`，因为它会把正在看图的人当场断掉。
- * 3. **取消**——默认。误按"换文件夹"是很常见的事。
- *
- * 文案**原样来自服务端**，这里一个字都不拼。在线人数、"链接仍然有效"、
- * "要真正结束访问请去撤销"这三句必须来自同一个知道真相的地方；前端自己
- * 拼一份，迟早会跟服务端说的不一样，而不一样的那一刻没有任何东西会报错。
- *
- * `role="alertdialog"` 而不是 `dialog`：它是对一个**已经被拒绝的操作**的回应，
- * 需要立刻被读屏软件念出来。
- */
-function GuestsOnlineConfirm({ message, onRevoke, onForce, onCancel }: {
-  message: string;
-  onRevoke: () => void;
-  onForce: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="modal-box guests-online" role="alertdialog" aria-modal="true"
-           aria-labelledby="guests-online-title">
-        <h2 id="guests-online-title">这个文件夹还有人在看</h2>
-        <p className="guests-online-msg">{message}</p>
-        <div className="modal-actions">
-          <button className="primary" onClick={onRevoke}>去撤销链接…</button>
-          <button className="danger" onClick={onForce}>仍然关闭</button>
-          <button onClick={onCancel}>取消</button>
-        </div>
-      </div>
-    </div>
   );
 }

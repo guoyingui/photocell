@@ -1,137 +1,101 @@
-import { useState, type DragEvent as ReactDragEvent } from 'react';
-import { useLibrary } from '../store/library';
-import { forgetRecent, readRecent, rememberRecent } from '../lib/recent';
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent } from 'react';
+import { getJSON } from '../lib/api';
 import { absoluteFolderFromDrop, folderNameFromDrop, locate, type DropHit } from '../lib/dropLocate';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { DirBrowser } from './DirBrowser';
-import { ThemeToggle } from './ThemeToggle';
 import { NativeFolderButton } from './NativeFolderButton';
 
-export function FolderPicker() {
+export function FolderPicker({ existing, onAdd, onClose }: {
+  existing: string[];
+  onAdd: (roots: string[]) => void;
+  onClose: () => void;
+}) {
   const [here, setHere] = useState('');
   const [manual, setManual] = useState('');
-  // 惰性初始化：挂载时读一次。三个 recent 函数都返回写入后的新列表，
-  // 所以之后每次改动直接 setState，不再回头读 localStorage。
-  const [recent, setRecent] = useState(readRecent);
-  const open = useLibrary((s) => s.open);
-  const phase = useLibrary((s) => s.phase);
-  const libError = useLibrary((s) => s.error);
-  const libErrorDetail = useLibrary((s) => s.errorDetail);
-
-  const choose = async (root: string) => {
-    setRecent(rememberRecent(root));
-    await open(root);
-  };
-
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [dropName, setDropName] = useState<string | null>(null);
   const [dropHit, setDropHit] = useState<DropHit>({ kind: 'none' });
-  const [dropError, setDropError] = useState<string | null>(null);
-  const [dropNotice, setDropNotice] = useState<string | null>(null);
+  const [dropNotice, setDropNotice] = useState('');
   const [listed, setListed] = useState<{ name: string; path: string }[]>([]);
-
-  const onDrop = (e: ReactDragEvent) => {
-    e.preventDefault();
-    setDropError(null);
-    setDropNotice(null);
-    if (phase === 'scanning') return;
-    const absolute = absoluteFolderFromDrop(e.dataTransfer);
-    if (absolute) { void choose(absolute); return; }
-    const read = folderNameFromDrop(e.dataTransfer);
-    if ('error' in read) {
-      setDropName(null);
-      setDropHit({ kind: 'none' });
-      setDropError(read.error);
-      return;
-    }
-    setDropName(read.name);
-    setDropNotice(read.notice ?? null);
-    setDropHit(locate(read.name, recent, listed));
+  const ref = useDialogFocus(onClose);
+  const request = useRef(0);
+  const saving = useRef(false);
+  useEffect(() => () => { request.current++; }, []);
+  const queue = (paths: string[]) => {
+    setSelected((old) => [...new Set([...old, ...paths].filter((path) => path && !existing.includes(path)))]);
+    setError('');
   };
-
-  return (
-    <div className="picker" data-testid="picker-dropzone"
-         onDragOver={(e) => e.preventDefault()}
-         onDrop={onDrop}>
-      <div className="screen-heading">
-        <h1>选择照片文件夹</h1>
-        <ThemeToggle />
-      </div>
-
-      {/* 没有真实路径时只指出候选目录，由用户选择，同名不能作为直接打开的依据。 */}
-      {dropError && <p className="picker-drop picker-drop-error">{dropError}</p>}
-      {dropNotice && <p className="picker-drop">{dropNotice}</p>}
-      {dropName && dropHit.kind !== 'none' && (
-        <div className="picker-drop picker-drop-hit">
-          找到了「{dropName}」：<code>{dropHit.path}</code>
-          <button className="primary" onClick={() => void choose(dropHit.path)}
-                  disabled={phase === 'scanning'}>打开</button>
-        </div>
-      )}
-      {dropName && dropHit.kind === 'none' && (
-        <p className="picker-drop">
-          你拖进来的是「{dropName}」，请在下面找到它 —— 浏览器不会把文件夹的完整路径告诉网页，
-          所以这一步只能由你点一下。
-        </p>
-      )}
-
-      {recent.length > 0 && (
-        <div className="picker-recent">
-          <h2>最近打开</h2>
-          {recent.map((p) => (
-            // 两个**并列**的按钮，不是嵌套——嵌套 <button> 是非法 HTML，
-            // 而且会逼出一堆 stopPropagation 才能让内层不触发外层。
-            <div className="picker-recent-row" key={p}>
-              <button className="picker-recent-item" onClick={() => void choose(p)}
-                      disabled={phase === 'scanning'}>{p}</button>
-              {/* title 必须写明"不会动磁盘上的文件夹"：在一个照片程序里，
-                  一个紧挨着路径的 ✕ 天然会被读成"删掉这个文件夹"。
-                  这句话是这个按钮唯一的澄清机会。
-                  ✕ 常驻显示而不是 hover 才出现——操作入口保持可见。
-                  也不做二次确认：误删的代价只是少一条快捷方式。 */}
-              <button className="picker-recent-del" type="button"
-                      aria-label={`不再显示 ${p}`}
-                      title="从「最近打开」里移除。不会动磁盘上的文件夹"
-                      onClick={() => setRecent(forgetRecent(p))}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <DirBrowser
-        onLocationChange={setHere}
-        onListingChange={setListed}
-        highlightName={dropName ?? undefined}
-        gotoPath={dropHit.kind === 'listed' ? dropHit.path : undefined}
-        maxHeight={Math.round(window.innerHeight * 0.44)}
-        rowAction={(d) => (
-          <button className="ghost" onClick={() => void choose(d.path)}
-                  disabled={phase === 'scanning'}>打开</button>
-        )}
-      />
-
-      <div className="picker-actions">
-        <NativeFolderButton disabled={phase === 'scanning'} onChoose={(path) => void choose(path)} />
-        <button className="primary" onClick={() => here && void choose(here)}
-                disabled={!here || phase === 'scanning'}>
-          {phase === 'scanning' ? '正在扫描…' : '打开当前文件夹'}
-        </button>
-      </div>
-
-      <div className="picker-manual">
-        <input value={manual} onChange={(e) => setManual(e.target.value)}
-               placeholder="或直接粘贴绝对路径" />
-        <button onClick={() => manual.trim() && void choose(manual.trim())}
-                disabled={phase === 'scanning'}>打开</button>
-      </div>
-
-      {/* 打不开是一个用户必须先去处理的阻断状态（只读 SD 卡、只读网络挂载、
-          磁盘写满、目录属于别的用户），不是一条一闪而过的提示。常驻在选择器上，
-          并且把服务端给的原始 errno 文案一并显示——只有它能说清到底卡在哪。 */}
-      {libError && (
-        <div className="picker-error">
-          <strong>{libError}</strong>
-          {libErrorDetail && <code>{libErrorDetail}</code>}
-        </div>
-      )}
+  const toggle = (path: string) => setSelected((old) => old.includes(path) ? old.filter((item) => item !== path) : [...old, path]);
+  const onDrop = (event: ReactDragEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    setError(''); setDropNotice(''); setDropHit({ kind: 'none' }); setDropName(null);
+    const absolute = absoluteFolderFromDrop(event.dataTransfer);
+    if (absolute) { queue([absolute]); return; }
+    const read = folderNameFromDrop(event.dataTransfer);
+    if ('error' in read) { setError(read.error); return; }
+    setDropName(read.name);
+    setDropNotice(read.notice ?? '');
+    setDropHit(locate(read.name, existing, listed));
+  };
+  const submit = async () => {
+    if (saving.current || !selected.length) return;
+    saving.current = true; setBusy(true); setError('');
+    const version = ++request.current;
+    try {
+      // 复用服务端目录边界校验，并拿真实路径去重；这里不扫描照片，也不开关当前库。
+      const canonical: string[] = [];
+      for (let offset = 0; offset < selected.length; offset += 4) {
+        const batch = await Promise.all(selected.slice(offset, offset + 4).map(async (path) => {
+          try {
+            const result = await getJSON<{ path: string }>(`/api/fs/list?path=${encodeURIComponent(path)}`);
+            return result.path;
+          } catch (err) { throw new Error(`${path}：${(err as Error).message}`); }
+        }));
+        if (version !== request.current) return;
+        canonical.push(...batch);
+      }
+      onAdd([...new Set(canonical)]);
+      onClose();
+    } catch (err) { if (version === request.current) setError((err as Error).message); }
+    finally { if (version === request.current) { saving.current = false; setBusy(false); } }
+  };
+  return <div className="modal"><div ref={ref} className="modal-box folder-picker" role="dialog" aria-modal="true" aria-label="添加照片目录" tabIndex={-1}
+    data-testid="picker-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+    <h2>添加照片目录</h2>
+    <p className="muted">可以选择多个目录，也可以跨文件夹逐个加入。添加后在左侧点击目录开始选片。</p>
+    {dropNotice && <p className="picker-drop">{dropNotice}</p>}
+    {dropName && dropHit.kind !== 'none' && <div className="picker-drop picker-drop-hit">
+      找到了「{dropName}」：<code>{dropHit.path}</code>
+      <button disabled={busy || existing.includes(dropHit.path) || selected.includes(dropHit.path)} onClick={() => queue([dropHit.path])}>
+        {existing.includes(dropHit.path) ? '已添加' : '加入待添加'}
+      </button>
+    </div>}
+    {dropName && dropHit.kind === 'none' && <p className="picker-drop">浏览器只提供了「{dropName}」的名字，请在下面定位目录或粘贴完整路径。</p>}
+    <DirBrowser onLocationChange={setHere} onListingChange={setListed} highlightName={dropName ?? undefined}
+      gotoPath={dropHit.kind === 'listed' ? dropHit.path : undefined} maxHeight={220}
+      rowAction={(dir) => <label className="folder-pick-option"><input type="checkbox" aria-label={`选择目录 ${dir.path}`}
+        disabled={busy || existing.includes(dir.path)} checked={existing.includes(dir.path) || selected.includes(dir.path)}
+        onChange={() => toggle(dir.path)} />{existing.includes(dir.path) ? '已添加' : '选择'}</label>} />
+    <div className="picker-actions">
+      <NativeFolderButton disabled={busy} onChoose={(path) => queue([path])} />
+      <button disabled={busy || !here || existing.includes(here)} onClick={() => toggle(here)}>
+        {existing.includes(here) ? '当前目录已添加' : selected.includes(here) ? '取消选择当前目录' : '选择当前目录'}
+      </button>
     </div>
-  );
+    <form className="picker-manual" onSubmit={(event) => { event.preventDefault(); queue(manual.split(/\r?\n/).map((path) => path.trim())); setManual(''); }}>
+      <label>目录完整路径<textarea value={manual} disabled={busy} placeholder="粘贴绝对路径，每行一个目录" onChange={(event) => setManual(event.target.value)} /></label>
+      <button disabled={busy || !manual.trim()} type="submit">加入待添加</button>
+    </form>
+    {selected.length > 0 && <div className="pending-folders" aria-label="待添加目录">
+      <strong>待添加 {selected.length} 个目录</strong>
+      <ul>{selected.map((path) => <li key={path}><code>{path}</code><button aria-label={`取消添加 ${path}`} disabled={busy}
+        onClick={() => toggle(path)}>×</button></li>)}</ul>
+    </div>}
+    {error && <p className="error folder-add-error" role="alert">{error}</p>}
+    <div className="modal-actions"><button onClick={onClose}>取消</button><button className="primary" disabled={busy || !selected.length}
+      onClick={() => void submit()}>{busy ? '正在检查目录…' : `添加 ${selected.length} 个目录`}</button></div>
+  </div></div>;
 }

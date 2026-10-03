@@ -3,8 +3,11 @@ import { putJSON } from '../lib/api';
 import type { FilterTab, PhotoFilters, ReviewFilter } from '../types';
 import type { OpinionFilter } from '../../../shared/opinions.js';
 import type { AnnotationFilters } from '../../../shared/annotations.js';
+import { emptyFilters, type FilterState } from '../lib/filterState';
 
 interface ViewState {
+  matchedIds: string[] | null;
+  applyFilters: (filters: FilterState) => void;
   annotationFilters: AnnotationFilters;
   setAnnotationFilters: (patch: Partial<AnnotationFilters>) => void;
   opinionFilter: OpinionFilter;
@@ -69,6 +72,7 @@ interface ViewState {
 }
 
 const INITIAL = {
+  matchedIds: null as string[] | null,
   annotationFilters: { rating: '', label: '', stage: '', keyword: '' },
   opinionFilter: 'all' as OpinionFilter,
   photoFilters: { query: '', iso: '', fNumber: '', exposureTime: '', focalLength: '' },
@@ -92,6 +96,10 @@ const INITIAL = {
 
 export const useView = create<ViewState>((set, get) => ({
   ...INITIAL,
+  applyFilters: (filters) => set({ tab: filters.tab, dirFilter: filters.dirFilter, clientFilter: filters.clientFilter,
+    reviewFilter: filters.reviewFilter, opinionFilter: filters.opinionFilter, photoFilters: { ...filters.photoFilters },
+    annotationFilters: { ...filters.annotationFilters }, matchedIds: filters.matchedIds ? [...filters.matchedIds] : null,
+    cursor: null, anchor: null, selection: new Set(), lightbox: null, compare: null }),
   setAnnotationFilters: (patch) => set((s) => ({ annotationFilters: { ...s.annotationFilters, ...patch },
     cursor: null, anchor: null, selection: new Set(), lightbox: null, compare: null })),
   setOpinionFilter: (opinionFilter) => set({ opinionFilter, cursor: null, anchor: null,
@@ -101,8 +109,7 @@ export const useView = create<ViewState>((set, get) => ({
   setReviewFilter: (reviewFilter) => set({ reviewFilter,
     cursor: null, anchor: null, selection: new Set(), lightbox: null, compare: null }),
   toggleInfo: () => set((s) => ({ infoOpen: !s.infoOpen })),
-  clearFilters: () => set({ tab: 'all', dirFilter: null, clientFilter: null,
-    photoFilters: { ...INITIAL.photoFilters }, annotationFilters: { ...INITIAL.annotationFilters }, reviewFilter: 'all', opinionFilter: 'all', cursor: null,
+  clearFilters: () => set({ ...emptyFilters(), cursor: null,
     anchor: null, selection: new Set(), lightbox: null, compare: null }),
   setResolveVisible: (fn) => set({ resolveVisible: fn }),
 

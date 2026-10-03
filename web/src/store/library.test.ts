@@ -112,6 +112,17 @@ const headerOf = (path: string) =>
   (calls.find((c) => c.path.split('?')[0] === path)?.init?.headers as Record<string, string> | undefined)
     ?.['X-PhotoCull-Session'];
 
+it('移动导出阻止关库时保留当前会话、选区和实时连接', async () => {
+  folder('sid-move', '/moving'); await lib().open('/moving');
+  useView.getState().setCursor('IMG_0002');
+  handlers['/api/library/close'] = () => ({ status: 409, body: { error: '正在移动文件，请等待结束', code: 'move-in-progress' } });
+  await lib().close();
+  expect(lib().phase).toBe('ready'); expect(lib().sessionId).toBe('sid-move');
+  expect(useView.getState().selection.has('IMG_0002')).toBe(true);
+  expect(streams[streams.length - 1].closed).toBe(false);
+  expect(lib().error).toContain('正在移动文件');
+});
+
 describe('C3 — 换文件夹时的跨文件夹状态残留', () => {
   it('A 文件夹的 selection 绝不能在 B 文件夹里被当成标记目标', async () => {
     // 同一台相机的两场拍摄天然共享 id，这不是边界情况而是常态。

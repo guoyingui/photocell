@@ -5,9 +5,11 @@ import { useLibrary } from '../store/library';
 import { useMarks } from '../store/marks';
 import { useView } from '../store/view';
 import { useSession } from '../store/session';
+import { useWorkspace } from '../store/workspace';
 import { postBlob } from '../lib/api';
 
 export function AnnotationTools({ order }: { order: string[] }) {
+  const collapsed = useWorkspace((state) => state.collapsed.annotations);
   const filters = useView((state) => state.annotationFilters);
   const selection = useView((state) => state.selection);
   const isAdmin = useSession((state) => state.kind === 'admin');
@@ -17,16 +19,22 @@ export function AnnotationTools({ order }: { order: string[] }) {
   const [batch, setBatch] = useState(false), [xmp, setXmp] = useState(false);
   const selected = order.filter((id) => selection.has(id));
   const change = useView.getState().setAnnotationFilters;
-  return <section className="annotation-tools" aria-label="后期筛选">
-    <strong>后期</strong><label>至少<select value={filters.rating} onChange={(event) => change({ rating: event.target.value })}>
+  if (collapsed) return null;
+  return <section className="annotation-tools filter-bar" aria-label="后期筛选">
+    <strong className="filter-heading">后期</strong>
+    <label className="filter-field" data-active={Boolean(filters.rating)}><span>至少</span><select value={filters.rating} onChange={(event) => change({ rating: event.target.value })}>
       <option value="">不限星级</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} 星</option>)}</select></label>
-    <label>标签<select value={filters.label} onChange={(event) => change({ label: event.target.value })}><option value="">全部颜色</option>
+    <label className="filter-field" data-active={Boolean(filters.label)}><span>标签</span><select value={filters.label} onChange={(event) => change({ label: event.target.value })}><option value="">全部颜色</option>
       {Object.entries(LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>
-    <label>阶段<select value={filters.stage} onChange={(event) => change({ stage: event.target.value })}><option value="">全部阶段</option>
+    <label className="filter-field" data-active={Boolean(filters.stage)}><span>阶段</span><select value={filters.stage} onChange={(event) => change({ stage: event.target.value })}><option value="">全部阶段</option>
       {Object.entries(STAGES).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>
-    <input aria-label="关键词筛选" value={filters.keyword} placeholder="筛选关键词" onChange={(event) => change({ keyword: event.target.value })} />
-    {isAdmin && <><button disabled={busy || !ready || !selected.length} onClick={() => setBatch(true)}>批量后期信息（{selected.length}）</button>
-      <button disabled={!ready} onClick={() => setXmp(true)}>导出 XMP…</button></>}
+    <label className="filter-field annotation-keyword" data-active={Boolean(filters.keyword.trim())}>
+      <span>关键词</span><input aria-label="关键词筛选" value={filters.keyword} placeholder="筛选关键词" onChange={(event) => change({ keyword: event.target.value })} />
+    </label>
+    {isAdmin && <div className="filter-actions annotation-actions">
+      <button disabled={busy || !ready || !selected.length} onClick={() => setBatch(true)}>批量后期信息（{selected.length}）</button>
+      <button disabled={!ready} onClick={() => setXmp(true)}>导出 XMP…</button>
+    </div>}
     {error && <><span className="error">{error}</span><button onClick={() => void useAnnotations.getState().reload()}>重新载入</button></>}
     {batch && <BatchAnnotations ids={selected} onClose={() => setBatch(false)} />}
     {xmp && <XmpPanel order={order} onClose={() => setXmp(false)} />}
