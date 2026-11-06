@@ -9,6 +9,7 @@ import { clampPan, zoomAt, type ZoomState } from '../lib/lightboxZoom';
 import type { Group } from '../lib/bursts';
 import { useBurstLeaders } from '../store/burstLeaders';
 import type { Asset, Mark } from '../types';
+import { MarkIcon } from './MarkIcon';
 
 const FIT: ZoomState = { scale: 1, pan: { x: 0, y: 0 } };
 
@@ -102,14 +103,16 @@ export function CompareView({ order, byId, groups = [] }: { order: string[]; byI
         return <section className="compare-pane" key={side} aria-label={label}>
           <div className="compare-caption">
             <strong>{label}</strong><code>{asset.id}</code>
-            <span>{marks[asset.id] === 'pick' ? '已收藏' : marks[asset.id] === 'reject' ? '已排除' : '未标记'}</span>
+            <CompareMark mark={marks[asset.id]} />
           </div>
           <CompareStage asset={asset} zoom={zoom} setZoom={setZoom} />
           <div className="compare-actions">
             {canWrite && (['pick', 'reject', null] as const).map((mark: Mark | null) => (
               <button key={mark ?? 'none'} type="button"
+                className={mark ? `lb-mark lb-mark-${mark}${marks[asset.id] === mark ? ' is-on' : ''}` : undefined}
                 aria-label={`${mark === 'pick' ? '收藏' : mark === 'reject' ? '排除' : '取消标记'}${label}`}
                 onClick={() => applyMark(mark, { targets: [asset.id] })}>
+                {mark && <MarkIcon mark={mark} />}
                 {mark === 'pick' ? '收藏' : mark === 'reject' ? '排除' : '取消标记'}
               </button>
             ))}
@@ -126,6 +129,13 @@ export function CompareView({ order, byId, groups = [] }: { order: string[]; byI
     <footer className="compare-footer">同步缩放 {zoom.scale.toFixed(1)}× · ← → 更换候选
       {canWrite && ' · P 收藏候选 · X 排除候选 · U 取消标记'}</footer>
   </div>;
+}
+
+function CompareMark({ mark }: { mark: Mark | undefined }) {
+  return <span className="compare-mark" data-mark={mark ?? 'none'}>
+    {mark && <MarkIcon mark={mark} size={11} />}
+    {mark === 'pick' ? '已收藏' : mark === 'reject' ? '已排除' : '未标记'}
+  </span>;
 }
 
 function CompareStage({ asset, zoom, setZoom }: {

@@ -10,6 +10,7 @@ import { useReview } from '../store/review';
 import { useAnnotations } from '../store/annotations';
 import { LABELS, STAGES } from '../../../shared/annotations.js';
 import { avatarColor, avatarInitial } from '../lib/avatar';
+import { MarkIcon } from './MarkIcon';
 import type { Asset } from '../types';
 
 interface Props {
@@ -143,8 +144,9 @@ export function Thumb({ asset, priority, visible, compact, order }: Props) {
         </span>
       )}
 
-      {mark === 'pick' && <span className="badge badge-pick" role="img" aria-label="已收藏" title="已收藏">★</span>}
-      {mark === 'reject' && <span className="badge badge-reject" role="img" aria-label="已排除" title="已排除">✕</span>}
+      {/* 标记写在片边上，不压照片：跟在小样的边框上用记号笔做记号一样。 */}
+      {mark === 'pick' && <span className="badge badge-pick" role="img" aria-label="已收藏" title="已收藏"><MarkIcon mark="pick" /></span>}
+      {mark === 'reject' && <span className="badge badge-reject" role="img" aria-label="已排除" title="已排除"><MarkIcon mark="reject" /></span>}
       {asset.raws.length === 0 && <span className="badge badge-warn" title="没有 RAW 文件">无 RAW</span>}
       {asset.jpg === null && <span className="badge badge-warn" title="纯 RAW，尝试内嵌 JPEG 预览">纯 RAW</span>}
     </figure>

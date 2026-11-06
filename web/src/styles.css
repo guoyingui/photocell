@@ -54,6 +54,10 @@
   --warn: #e5a54b;
   --warn-soft: rgba(229, 165, 75, .12);
   --reject-soft: rgba(239, 95, 85, .12);
+  --pick-band: color-mix(in srgb, var(--pick) 24%, var(--surface));
+  --pick-text: #5fd59a;
+  --reject-band: color-mix(in srgb, var(--reject) 15%, var(--surface));
+  --reject-text: #f47a71;
 
   --selected: rgba(242, 193, 78, .12);
   --active-bg: rgba(242, 193, 78, .13);
@@ -109,6 +113,10 @@
   --warn: #8f5d06;
   --warn-soft: rgba(196, 128, 10, .1);
   --reject-soft: rgba(196, 58, 48, .08);
+  --pick-band: color-mix(in srgb, var(--pick) 17%, var(--surface));
+  --pick-text: #0f6a3c;
+  --reject-band: color-mix(in srgb, var(--reject) 11%, var(--surface));
+  --reject-text: #a82c23;
 
   --selected: rgba(232, 170, 30, .16);
   --active-bg: #fbefcf;
@@ -603,7 +611,8 @@ html.tauri .directory-app .topbar { padding-left: 0; }
 .thumb-compact { width: 150px; flex: 0 0 auto; }
 .thumb figcaption {
   height: 23px; padding: 0 8px; font: 500 11.5px/23px var(--font-num); letter-spacing: .2px; color: var(--muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 0 0 3px 3px;
+  transition: background-color .15s, color .15s;
 }
 .thumb:has(> .badge-warn) figcaption { padding-right: 54px; }
 .thumb-skeleton, .thumb-failed {
@@ -634,29 +643,30 @@ html.tauri .directory-app .topbar { padding-left: 0; }
     linear-gradient(var(--c), var(--c)) bottom right / var(--w) var(--l) no-repeat;
 }
 
-/* 收藏：片边亮一道绿线。排除：照片压暗、去一半饱和度，鼠标移上去恢复——
-   看一屏格子时被排除的自然退到后面，需要复核时又不用切页签。 */
-.thumb:has(> .badge-pick) { box-shadow: inset 0 -2px 0 var(--pick); }
-.thumb:has(> .badge-pick) figcaption { color: var(--pick); }
-.thumb:has(> .badge-reject) { box-shadow: inset 0 -2px 0 var(--reject); }
-.thumb:has(> .badge-reject) figcaption { color: var(--reject); }
+/* 收藏 / 排除写在片边上，跟在小样边框上用记号笔做记号一样：整条片边染色，
+   左端一枚实心记号，照片本身不被任何东西盖住。
+   收藏要一眼找得到，片边染得浓一些、帧号加粗；排除要退到后面，片边只淡淡染红，
+   照片压暗、去一半饱和度，鼠标移上去或光标停在上面时恢复，复核时不用切页签。 */
+.thumb:has(> .badge-pick) figcaption, .thumb:has(> .badge-reject) figcaption { padding-left: 29px; }
+.thumb:has(> .badge-pick) figcaption { background: var(--pick-band); color: var(--pick-text); font-weight: 700; }
+.thumb:has(> .badge-reject) figcaption { background: var(--reject-band); color: var(--reject-text); }
 .thumb:has(> .badge-reject) img { opacity: .42; filter: grayscale(.55); }
 .thumb:has(> .badge-reject):hover img, .thumb-cursor:has(> .badge-reject) img { opacity: 1; filter: none; }
 
 .badge {
-  position: absolute; top: 6px; display: inline-flex; align-items: center;
+  position: absolute; top: 6px; display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 4px;
 }
 .badge-pick { left: 6px; background: var(--pick); color: var(--on-pick); }
 .badge-reject { left: 6px; background: var(--reject); color: var(--on-reject); }
 .badge-warn { right: 6px; color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); }
 
-/* 标记只表示选片结果：放在照片右下角，不占左上的信息位，也不压住片边的帧号。 */
+/* 片边左端的实心记号。尺寸固定，帧号从它后面开始。 */
 .thumb > .badge-pick, .thumb > .badge-reject {
-  top: auto; left: auto; right: 7px; bottom: 31px; width: 22px; height: 22px;
-  display: grid; place-items: center; padding: 0; font-size: 12px;
-  border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px var(--surface), 0 2px 6px rgba(0, 0, 0, .3);
+  top: auto; right: auto; left: 7px; bottom: 4px; width: 16px; height: 16px;
+  display: grid; place-items: center; padding: 0; border-radius: 4px; pointer-events: none;
 }
+.thumb > .badge-reject { background: color-mix(in srgb, var(--reject) 85%, var(--surface)); }
 /* 缺 RAW / 纯 RAW 是文件信息，不是需要立刻处理的警告：收进片边，跟帧号同一行。 */
 .thumb > .badge-warn {
   top: auto; bottom: 5px; right: 7px; padding: 2px 4px; font-size: 10px; font-weight: 500;
@@ -817,7 +827,12 @@ html.tauri .directory-app .topbar { padding-left: 0; }
 }
 .lb-actions .muted { margin-left: 8px; font-variant-numeric: tabular-nums; }
 .lb-actions button[aria-label="上一张照片"] + button { margin-right: 14px; }
-.lb-actions button.primary { background: var(--pick); border-color: var(--pick); color: var(--on-pick); }
+.lb-mark-pick .mark-icon { color: var(--pick); }
+.lb-mark-reject .mark-icon { color: var(--reject); }
+.lb-mark.is-on { font-weight: 600; }
+.lb-mark.is-on .mark-icon { color: inherit; }
+.lb-mark-pick.is-on, .lb-mark-pick.is-on:hover:not(:disabled) { background: var(--pick); border-color: var(--pick); color: var(--on-pick); }
+.lb-mark-reject.is-on, .lb-mark-reject.is-on:hover:not(:disabled) { background: var(--reject); border-color: var(--reject); color: var(--on-reject); }
 .lb-actions button[aria-pressed] { margin-left: 14px; }
 .lb-actions button[aria-pressed="true"] { border-color: var(--accent-stroke); color: var(--accent-text); }
 .lb-bar {
@@ -850,6 +865,12 @@ html.tauri .directory-app .topbar { padding-left: 0; }
 .compare-caption { display: flex; align-items: center; gap: 12px; padding: 10px 18px; }
 .compare-caption code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13px/1.4 var(--font-num); color: var(--fg); }
 .compare-caption > span { margin-left: auto; color: var(--muted); white-space: nowrap; }
+.compare-mark {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 99px;
+  font-size: 12px; line-height: 22px; background: var(--btn);
+}
+.compare-mark[data-mark="pick"] { color: var(--pick-text); background: var(--pick-band); font-weight: 600; }
+.compare-mark[data-mark="reject"] { color: var(--reject-text); background: var(--reject-band); }
 .compare-stage {
   position: relative; flex: 1; min-height: 0; overflow: hidden;
   background: var(--lb-bg); cursor: grab; user-select: none; display: grid; place-items: center;
@@ -1118,6 +1139,10 @@ input[type="file"]::file-selector-button {
 .similar-thumb-caption code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px/1.4 var(--font-num); color: var(--fg); }
 .similar-thumb-keeper, .similar-thumb-keeper:hover:not(:disabled) { border-color: var(--accent-stroke); box-shadow: 0 0 0 2px var(--accent-soft); }
 .similar-thumb-reject img { opacity: .45; filter: grayscale(.5); }
+.similar-thumb-state { display: inline-flex; align-items: center; gap: 4px; }
+.similar-thumb-state[data-mark="pick"] { color: var(--pick-text); font-weight: 600; }
+.similar-thumb-state[data-mark="reject"] { color: var(--reject-text); }
+.similar-thumb-state[data-mark="keep"] { color: var(--accent-text); font-weight: 600; }
 .similar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .similar-confirm { margin-top: 10px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 8px; background: var(--warn-soft); }
 .similar-confirm p { margin: 0 0 8px; }

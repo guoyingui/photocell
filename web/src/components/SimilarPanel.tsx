@@ -9,6 +9,7 @@ import { useSession } from '../store/session';
 import { useSimilar } from '../store/similar';
 import { useView } from '../store/view';
 import type { Mark } from '../types';
+import { MarkIcon } from './MarkIcon';
 
 interface SimilarGroup {
   key: string;
@@ -252,7 +253,10 @@ export function SimilarPanel({ onClose }: { onClose: () => void }) {
                       <img src={thumbUrl(id)} alt={asset?.stem ?? id} loading="lazy" draggable={false} />
                       <span className="similar-thumb-caption">
                         <code>{asset?.stem ?? id}</code>
-                        <span>{active ? '保留' : mark === 'pick' ? '★ 已收藏' : mark === 'reject' ? '✕ 已排除' : '点击选为保留'}</span>
+                        <span className="similar-thumb-state" data-mark={active ? 'keep' : mark ?? 'none'}>
+                          {!active && mark && <MarkIcon mark={mark} size={11} />}
+                          {active ? '保留' : mark === 'pick' ? '已收藏' : mark === 'reject' ? '已排除' : '点击选为保留'}
+                        </span>
                       </span>
                     </button>;
                   })}

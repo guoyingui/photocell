@@ -3,6 +3,7 @@ import { showToast } from '../store/notice';
 import { useSession } from '../store/session';
 import { useView } from '../store/view';
 import type { Mark } from '../types';
+import { MarkIcon } from './MarkIcon';
 
 /**
  * 框选、组合键点选之后的标记操作。单张也能直接用鼠标标记。
@@ -28,8 +29,8 @@ export function MarkBar() {
   return (
     <div className="markbar" role="toolbar" aria-label="批量标记">
       <span className="markbar-count">已选 {selection.size}</span>
-      <button type="button" className="markbar-pick" onClick={() => run('pick')}>收藏</button>
-      <button type="button" className="markbar-reject" onClick={() => run('reject')}>排除</button>
+      <button type="button" className="markbar-pick" onClick={() => run('pick')}><MarkIcon mark="pick" />收藏</button>
+      <button type="button" className="markbar-reject" onClick={() => run('reject')}><MarkIcon mark="reject" />排除</button>
       <button type="button" onClick={() => run(null)}>取消标记</button>
       {canHide && (
         <button type="button" className="markbar-hide" onClick={() => {

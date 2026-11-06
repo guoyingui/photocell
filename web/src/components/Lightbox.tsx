@@ -8,6 +8,7 @@ import { useSession } from '../store/session';
 import { applyMark } from '../lib/applyMark';
 import type { Asset } from '../types';
 import { PhotoInfo } from './PhotoInfo';
+import { MarkIcon } from './MarkIcon';
 
 interface Props {
   order: string[];
@@ -184,8 +185,10 @@ export function Lightbox({ order, byId }: Props) {
         <button aria-label="下一张照片" disabled={index < 0 || index >= navigation.length - 1}
           onClick={() => openLightbox(navigation[index + 1], customOrder ?? undefined)}>下一张 →</button>
         {canWrite && <>
-          <button className={mark === 'pick' ? 'primary' : ''} onClick={() => applyMark('pick', { targets: [id] })}>收藏（P）</button>
-          <button onClick={() => applyMark('reject', { targets: [id] })}>排除（X）</button>
+          <button className={mark === 'pick' ? 'lb-mark lb-mark-pick is-on' : 'lb-mark lb-mark-pick'}
+            onClick={() => applyMark('pick', { targets: [id] })}><MarkIcon mark="pick" />收藏（P）</button>
+          <button className={mark === 'reject' ? 'lb-mark lb-mark-reject is-on' : 'lb-mark lb-mark-reject'}
+            onClick={() => applyMark('reject', { targets: [id] })}><MarkIcon mark="reject" />排除（X）</button>
           <button onClick={() => applyMark(null, { targets: [id] })}>取消标记（U）</button>
         </>}
         <button aria-pressed={native && image.full} onClick={() => { setNative(true); setZoom({ scale: FIT, pan: { x: 0, y: 0 } }); }}>100%</button>
@@ -196,8 +199,8 @@ export function Lightbox({ order, byId }: Props) {
       <div className="lb-bar">
         <span>{asset.id}</span>
         <span className="muted">{index + 1} / {navigation.length}</span>
-        {mark === 'pick' && <span className="badge badge-pick">收藏</span>}
-        {mark === 'reject' && <span className="badge badge-reject">排除</span>}
+        {mark === 'pick' && <span className="badge badge-pick"><MarkIcon mark="pick" size={11} />收藏</span>}
+        {mark === 'reject' && <span className="badge badge-reject"><MarkIcon mark="reject" size={11} />排除</span>}
         {asset.raws.length === 0 && <span className="badge badge-warn">无 RAW</span>}
         <span className="muted">
           {scale > FIT
