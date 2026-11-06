@@ -6,34 +6,52 @@ import { applyMark } from '../lib/applyMark';
 import { originalUrl, thumbUrl } from '../lib/thumbSource';
 import { usePreviewCache } from '../store/previewCache';
 import { clampPan, zoomAt, type ZoomState } from '../lib/lightboxZoom';
+import type { Group } from '../lib/bursts';
+import { useBurstLeaders } from '../store/burstLeaders';
 import type { Asset, Mark } from '../types';
 
 const FIT: ZoomState = { scale: 1, pan: { x: 0, y: 0 } };
 
 /** 两侧共享相对视口的缩放与平移，换候选时保留当前比较位置。 */
-export function CompareView({ order, byId }: { order: string[]; byId: Map<string, Asset> }) {
+export function CompareView({ order, byId, groups = [] }: { order: string[]; byId: Map<string, Asset>; groups?: Group[] }) {
   usePreviewCache((state) => state.version);
   const comparison = useView((s) => s.compare);
   const close = useView((s) => s.closeCompare);
   const open = useView((s) => s.openCompare);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmReject, setConfirmReject] = useState(false);
+  const isAdmin = useSession((s) => s.kind === 'admin');
+  const pending = useMarks((s) => s.pendingCount);
   const canWrite = useSession((s) => s.canWrite());
   const marks = useMarks((s) => s.marks);
   const [zoom, setZoom] = useState<ZoomState>(FIT);
+  const group = comparison?.groupKey ? groups.find((item) => item.key === comparison.groupKey) : undefined;
+  const scopedOrder = comparison?.groupKey ? group?.ids ?? [] : order;
   const valid = comparison !== null && [comparison.reference, comparison.candidate]
-    .every((id) => byId.has(id) && order.includes(id));
+    .every((id) => byId.has(id) && scopedOrder.includes(id));
   const reference = comparison?.reference;
   const candidate = comparison?.candidate;
-  const candidates = order.filter((id) => id !== reference);
+  const candidates = scopedOrder.filter((id) => id !== reference);
   const index = candidate ? candidates.indexOf(candidate) : -1;
 
   useEffect(() => {
     if (comparison && !valid) close();
   }, [comparison, valid, close]);
-  useEffect(() => { if (!comparison) setZoom(FIT); }, [comparison]);
+  useEffect(() => { if (!comparison) { setZoom(FIT); setError(''); } setConfirmReject(false); }, [comparison, group]);
+  const navigate = (ref: string, next: string) => { setConfirmReject(false); open(ref, next, comparison?.groupKey); };
+  const chooseLeader = async () => {
+    if (!group || !reference || busy || !isAdmin) return;
+    setBusy(true); setError('');
+    try { await useBurstLeaders.getState().save(group.key, reference); }
+    catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
+  };
 
   useEffect(() => {
     if (!valid || !reference || !candidate) return;
     const onKey = (event: KeyboardEvent) => {
+      if (confirmReject && event.key !== 'Escape') return;
       const target = event.target as HTMLElement | null;
       if (target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -42,8 +60,8 @@ export function CompareView({ order, byId }: { order: string[]; byId: Map<string
       if (!['escape', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ', 'p', 'f', 'x', 'u', 'h', 'enter'].includes(key)) return;
       event.preventDefault(); event.stopPropagation();
       if (key === 'escape') close();
-      else if (key === 'arrowleft' && candidates[index - 1]) open(reference, candidates[index - 1]);
-      else if (key === 'arrowright' && candidates[index + 1]) open(reference, candidates[index + 1]);
+      else if (key === 'arrowleft' && candidates[index - 1]) navigate(reference, candidates[index - 1]);
+      else if (key === 'arrowright' && candidates[index + 1]) navigate(reference, candidates[index + 1]);
       else if (key === ' ') setZoom((value) => value.scale === 1 ? { scale: 2, pan: { x: 0, y: 0 } } : FIT);
       else if (['p', 'f', 'x', 'u'].includes(key)) {
         applyMark(key === 'x' ? 'reject' : key === 'u' ? null : 'pick', { targets: [candidate] });
@@ -51,17 +69,32 @@ export function CompareView({ order, byId }: { order: string[]; byId: Map<string
     };
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });
-  }, [valid, reference, candidate, order, index, open, close]);
+  }, [valid, reference, candidate, scopedOrder, index, open, close, comparison?.groupKey, confirmReject]);
 
   if (!valid || !comparison) return null;
   return <div className="compare-view" role="dialog" aria-modal="true" aria-label="双图对比">
     <header className="compare-toolbar">
-      <strong>双图对比</strong>
+      <strong>{group ? `连拍组择优 · ${scopedOrder.length} 张` : '双图对比'}</strong>
       <span className="muted">左侧固定参考 · 滚轮同步缩放 · 拖拽同步平移</span>
       <button onClick={() => setZoom(FIT)}>恢复贴合</button>
-      <button onClick={() => open(comparison.candidate, comparison.reference)}>交换位置</button>
+      <button onClick={() => navigate(comparison.candidate, comparison.reference)}>交换位置</button>
       <button onClick={close}>退出对比（Esc）</button>
     </header>
+    {group && isAdmin && <div className="burst-actions">
+      <button disabled={busy} onClick={() => void chooseLeader()}>将参考图设为代表图</button>
+      <button disabled={busy || pending > 0 || !canWrite || candidates.length === 0}
+        onClick={() => setConfirmReject(true)}>排除其余 {candidates.length} 张…</button>
+      <span className="muted">仅处理本组当前筛选下可见的照片；代表图本身不改变标记。</span>
+      {confirmReject && <div role="alert">
+        <p>保留参考图 {reference} 的标记，将其余 {candidates.length} 张标为排除。已有摄影师最终决定仍优先。可撤销，不删除文件。</p>
+        <button disabled={pending > 0} onClick={() => {
+          if (useSession.getState().kind !== 'admin' || !useSession.getState().canWrite()) return;
+          applyMark('reject', { targets: candidates }); setConfirmReject(false);
+        }}>确认排除其余照片</button>
+        <button onClick={() => setConfirmReject(false)}>取消</button>
+      </div>}
+      {error && <p className="error" role="alert">{error}</p>}
+    </div>}
     <div className="compare-panes">
       {(['reference', 'candidate'] as const).map((side) => {
         const asset = byId.get(comparison[side])!;
@@ -81,10 +114,10 @@ export function CompareView({ order, byId }: { order: string[]; byId: Map<string
               </button>
             ))}
             {side === 'candidate' && <>
-              <button disabled={index <= 0} onClick={() => open(comparison.reference, candidates[index - 1])}>上一张</button>
+              <button disabled={index <= 0} onClick={() => navigate(comparison.reference, candidates[index - 1])}>上一张</button>
               <span className="muted">{index + 1} / {candidates.length}</span>
               <button disabled={index >= candidates.length - 1}
-                onClick={() => open(comparison.reference, candidates[index + 1])}>下一张</button>
+                onClick={() => navigate(comparison.reference, candidates[index + 1])}>下一张</button>
             </>}
           </div>
         </section>;

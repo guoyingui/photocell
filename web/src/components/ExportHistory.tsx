@@ -8,6 +8,7 @@ interface FileResult {
 interface HistoryRecord {
   id: string; parentId: string | null; createdAt: number; mode: 'copy' | 'move'; destRoot: string;
   status: string; retryCount: number; total: number; completed: number; error: string | null;
+  selectionVersion?: string;
   files?: FileResult[];
   summary?: { records?: string[]; missingRaw?: string[] };
 }
@@ -113,6 +114,7 @@ export function ExportHistory({ onBusyChange }: { onBusyChange: (busy: boolean) 
           }}>重试未完成文件</button>}
       </div>
       {detail?.id === record.id && <>
+        {detail.selectionVersion && <p className="muted">选片版本编号：{detail.selectionVersion}（可在「选片版本」中核对导出时名单）</p>}
         {!!detail.summary?.missingRaw?.length && <p className="warn">无 RAW：{detail.summary.missingRaw.join('、')}</p>}
         {detail.summary?.records?.map((file) => <p className="muted" key={file}>清单位置：{file}</p>)}
         <div className="export-history-files"><table><thead><tr><th>源文件</th><th>结果</th><th>目标或原因</th></tr></thead>

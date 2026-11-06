@@ -84,6 +84,7 @@ export async function requireSession(req, res, next) {
     if (getSession(sid) !== session) return sessionGone(res);
   }
 
+  if (session.restoring) return res.status(409).json({ error: '正在恢复选片数据，请稍后重试' });
   req.session = session;
   next();
 }
@@ -100,6 +101,7 @@ export async function requireSession(req, res, next) {
 export function requireLiveSession(req, res, next) {
   const session = getSession(sessionIdOf(req));
   if (!session) return sessionGone(res);
+  if (session.restoring) return res.status(409).json({ error: '正在恢复选片数据，请稍后重试' });
   req.session = session;
   next();
 }

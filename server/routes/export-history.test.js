@@ -65,6 +65,8 @@ describe('持久化导出历史和逐文件重试', () => {
     _test.jobs.delete(initial.jobId);
     const record = await (await request(`/api/export/history/${initial.jobId}`)).json();
     expect(record.retryCount).toBe(1); expect(record.files).toHaveLength(4);
+    const versions = await (await request('/api/library/versions')).json();
+    expect(versions.versions.find((v) => v.id === record.selectionVersion)?.pickedIds).toEqual(['A', 'B']);
     const listing = await (await request('/api/export/history')).json();
     expect(listing.records.find((entry) => entry.id === initial.jobId).completed).toBe(3);
     const csv = await (await request(`/api/export/history/${initial.jobId}/csv`)).text();
@@ -77,6 +79,8 @@ describe('持久化导出历史和逐文件重试', () => {
     expect(retried.total).toBe(1);
     const retriedSummary = await finish(retried.jobId);
     expect(retriedSummary.exported).toBe(1); expect(retriedSummary.errors).toEqual([]);
+    const retryRecord = await (await request(`/api/export/history/${retried.jobId}`)).json();
+    expect(retryRecord.selectionVersion).toBe(record.selectionVersion);
     expect(retriedSummary.files.map((file) => file.name)).toEqual(['A.JPG']);
     expect(retriedSummary.missingRaw).toEqual([]);
     const final = await readExportHistory(root, retried.jobId);

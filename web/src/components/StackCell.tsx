@@ -42,6 +42,8 @@ export function StackCell({ group, byId, priority, visible, order }: Props) {
               title={expanded ? '收起这组连拍' : '展开这组连拍'}>
         ×{group.ids.length}
       </button>
+      <button className="stack-compare" onClick={() => useView.getState().openCompare(head.id, group.ids[1], group.key)}
+        title="只比较当前筛选下这组连拍中的照片">组内择优</button>
       {summary.picked > 0 && (
         <span className="stack-summary">{summary.picked}/{summary.total} 已收藏</span>
       )}

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { backfill, evaluate, sanitizeContrib, setContribution } from './contrib.js';
 
 export const CELL_WIDTH_MIN = 120;
@@ -135,7 +136,7 @@ function sanitizeSettings(field) {
   };
 }
 
-function sanitize(parsed) {
+export function sanitizeMarks(parsed) {
   const marksField = parsed?.marks;
   // 非 plain object 的 marks 字段（数组、字符串、数字等）视为损坏。
   const rawMarks = {};
@@ -162,6 +163,9 @@ function sanitize(parsed) {
 
   return {
     version: 1,
+    burstRevision: Number.isSafeInteger(parsed?.burstRevision) ? parsed.burstRevision : 0,
+    burstLeaders: Object.fromEntries(Object.entries(parsed?.burstLeaders ?? {}).filter(([key, id]) => typeof key === 'string' && typeof id === 'string')),
+    finalHistory: Array.isArray(parsed?.finalHistory) ? parsed.finalHistory : [],
     updatedAt: typeof parsed?.updatedAt === 'string' ? parsed.updatedAt : '',
     marks,
     settings: sanitizeSettings(parsed?.settings),
@@ -173,7 +177,7 @@ function sanitize(parsed) {
   };
 }
 
-const empty = () => sanitize(null);
+const empty = () => sanitizeMarks(null);
 
 async function readJson(file) {
   return JSON.parse(await fs.readFile(file, 'utf8'));
@@ -181,13 +185,13 @@ async function readJson(file) {
 
 export async function readMarksFile(root) {
   try {
-    return { ...sanitize(await readJson(marksPath(root))), recovered: false };
+    return { ...sanitizeMarks(await readJson(marksPath(root))), recovered: false };
   } catch (err) {
     if (err.code === 'ENOENT') return { ...empty(), recovered: false };
   }
   // 主文件存在但坏了 —— 试备份
   try {
-    return { ...sanitize(await readJson(bakPath(root))), recovered: true };
+    return { ...sanitizeMarks(await readJson(bakPath(root))), recovered: true };
   } catch {
     return { ...empty(), recovered: false };
   }
@@ -204,7 +208,7 @@ export async function writeMarksFile(root, data) {
     if (err.code !== 'ENOENT') throw err;
   }
 
-  const payload = { ...sanitize(data), updatedAt: new Date().toISOString() };
+  const payload = { ...sanitizeMarks(data), updatedAt: new Date().toISOString() };
   delete payload.recovered;
 
   const tmp = marksPath(root) + '.tmp';
@@ -316,6 +320,27 @@ export async function createMarkStore(root, { debounceMs = 500 } = {}) {
       schedule();
     },
 
+    replace(restored) {
+      if (closed) throw new Error('Cannot modify a closed MarkStore');
+      Object.assign(data, sanitizeMarks(restored));
+      schedule();
+    },
+    setBurstLeader(key, id) {
+      if (closed) throw new Error('Cannot modify a closed MarkStore');
+      data.burstRevision++;
+      if (id === null) delete data.burstLeaders[key];
+      else data.burstLeaders[key] = id;
+      schedule();
+    },
+    captureFinalVersion(action = 'final', pickedIds) {
+      if (closed) throw new Error('Cannot modify a closed MarkStore');
+      const version = { id: crypto.randomUUID(), subject: 'admin', name: '摄影师最终名单', action,
+        createdAt: Date.now(), pickedIds: pickedIds ?? Object.keys(data.marks).filter((id) => data.marks[id] === 'pick'),
+        note: '', photoNotes: {}, finalMarks: structuredClone(data.finalMarks) };
+      data.finalHistory.push(version);
+      schedule();
+      return version.id;
+    },
     setFinalMarks(patch) {
       if (closed) throw new Error('Cannot modify a closed MarkStore');
       data.finalRevision++;
@@ -329,7 +354,7 @@ export async function createMarkStore(root, { debounceMs = 500 } = {}) {
         else { delete data.marks[id]; delete data.marksMeta[id]; }
       }
       data.hidden = data.hidden.filter((id) => data.marks[id] === undefined);
-      schedule();
+      this.captureFinalVersion();
     },
 
     /**
@@ -358,7 +383,7 @@ export async function createMarkStore(root, { debounceMs = 500 } = {}) {
     setSettings(patch) {
       // F3: Reject mutations on closed store
       if (closed) throw new Error('Cannot modify a closed MarkStore');
-      // 最后一道防线：不能假设调用者已经归一过 cellWidth——sanitize() 只在
+      // 最后一道防线：不能假设调用者已经归一过 cellWidth——sanitizeMarks() 只在
       // 读/写磁盘时跑，而这里改的是进程内存里的 data.settings，从赋值那一刻
       // 起就会被四条路径原样回显给所有人，直到下次重启或落盘重读。
       const next = { ...patch };

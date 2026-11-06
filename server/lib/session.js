@@ -359,6 +359,14 @@ async function runScan(session) {
     session.skippedFiles = skippedFiles;
     session.byId = new Map(assets.map((a) => [a.id, a]));
     session.bake.total = assets.filter((a) => a.jpg || a.raws?.length).length;
+    try {
+      const { createBackup } = await import('./backups.js');
+      await createBackup(session, 'daily');
+    } catch (err) {
+      console.error('[backup] 自动备份失败', err);
+      session.warnings.push('自动备份未完成，请摄影师检查磁盘后点击「备份与恢复…」手动备份。');
+    }
+    if (session.aborted) return;
     session.scan.done = true;
     emit(session, { type: 'scan', found: session.scan.found, done: true });
 
@@ -390,6 +398,8 @@ async function createSession(root) {
   await assertWritable(root);
   // markStore 也在返回之前建好：它只读一个小 JSON，和扫描时长无关，
   // 而 settings / marksRecovered 是开库响应里就要给出去的。
+  const { recoverRestore } = await import('./backups.js');
+  await recoverRestore(root);
   const markStore = await createMarkStore(root);
 
   const session = {

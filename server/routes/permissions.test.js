@@ -208,6 +208,23 @@ const ENDPOINTS = [
     body: () => ({ cellWidth: 240 }),
     admin: 200, editor: 403, viewer: 403, none: 401 },
 
+  { method: 'GET', path: '/api/library/burst-leaders', admin: 200, editor: 200, viewer: 200, none: 401 },
+  { method: 'PUT', path: '/api/library/burst-leaders', deny: 'admin-only', body: () => ({ key: 'A', id: 'A' }),
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/library/versions', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/library/backups', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/library/backups', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
+  { method: 'GET', path: '/api/library/backups/:id', deny: 'admin-only',
+    url: () => '/api/library/backups/00000000-0000-0000-0000-000000000000',
+    admin: 404, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/library/backups/preview', deny: 'admin-only',
+    admin: 400, editor: 403, viewer: 403, none: 401 },
+  { method: 'POST', path: '/api/library/backups/restore', deny: 'admin-only',
+    admin: 400, editor: 403, viewer: 403, none: 401 },
+
   // ── 只读资产：访客要看照片才谈得上选片
   { method: 'GET', path: '/api/library/assets', admin: 200, editor: 200, viewer: 200, none: 401 },
   { method: 'GET', path: '/api/library/meta', admin: 200, editor: 200, viewer: 200, none: 401 },

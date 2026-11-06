@@ -35,7 +35,7 @@ interface ViewState {
   anchor: string | null;
   selection: Set<string>;
   lightbox: string | null;
-  compare: { reference: string; candidate: string } | null;
+  compare: { reference: string; candidate: string; groupKey?: string } | null;
   // view.ts 不认识 Group/Asset，没法自己判断某个 id 折叠后是否还可见，
   // 所以这段"给定 id 和当前 expanded 集合，算出应该显示成哪个 id"的判断
   // 由拥有分组数据的上层（App.tsx）注入；默认是恒等函数，在上层还没注册前
@@ -58,7 +58,7 @@ interface ViewState {
   setSelection: (ids: string[]) => void;
   openLightbox: (id: string) => void;
   closeLightbox: () => void;
-  openCompare: (reference: string, candidate: string) => void;
+  openCompare: (reference: string, candidate: string, groupKey?: string) => void;
   closeCompare: () => void;
   /**
    * 把 cursor / lightbox / selection 里已经不在 `ids` 中的成员清掉。
@@ -230,9 +230,9 @@ export const useView = create<ViewState>((set, get) => ({
   // 一个不用调用方（useKeyboard）每次都记得检查 lightbox 状态才能维持的不变量。
   openLightbox: (id) => set({ lightbox: id, compare: null, cursor: id, anchor: id, selection: new Set([id]) }),
   closeLightbox: () => set({ lightbox: null }),
-  openCompare: (reference, candidate) => {
+  openCompare: (reference, candidate, groupKey) => {
     if (reference === candidate) return;
-    set({ compare: { reference, candidate }, lightbox: null,
+    set({ compare: { reference, candidate, ...(groupKey ? { groupKey } : {}) }, lightbox: null,
       cursor: candidate, anchor: candidate, selection: new Set([candidate]) });
   },
   closeCompare: () => set({ compare: null }),

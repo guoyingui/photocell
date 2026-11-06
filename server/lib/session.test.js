@@ -6,6 +6,7 @@ import {
   openSession, beginSession, closeSession, closeAllSessions, getSession, getSessionByRoot, browseRoots,
   rescanSession,
 } from './session.js';
+import { stopBake } from './bake.js';
 import { marksDir, readMarksFile } from './store.js';
 
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
@@ -586,6 +587,8 @@ describe('rescanSession', () => {
     const session = await openSession(root);
     const before = session.assets;
 
+    // 先结束缩略图写入，避免测试夹具删除目录时后台 mkdir 触发 ENOTEMPTY。
+    await stopBake(session);
     await fs.rm(root, { recursive: true, force: true });   // 整个文件夹没了
     await expect(rescanSession(session)).rejects.toThrow();
 

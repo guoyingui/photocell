@@ -429,3 +429,23 @@ marksRouter.put('/settings', requireAdmin, requireSession, async (req, res, next
     res.json({ ok: true, settings: req.session.markStore.data.settings });
   } catch (err) { next(err); }
 });
+
+marksRouter.get('/burst-leaders', requirePerm('read'), requireSession, (req, res) => {
+  res.json({ leaders: req.session.markStore.data.burstLeaders, revision: req.session.markStore.data.burstRevision });
+});
+marksRouter.put('/burst-leaders', requireAdmin, requireSession, async (req, res, next) => {
+  try {
+    const { key, id } = req.body ?? {};
+    if (typeof key !== 'string' || !req.session.byId.has(key)
+      || (id !== null && (typeof id !== 'string' || !req.session.byId.has(id)
+        || req.session.markStore.data.hidden.includes(id)))) {
+      return res.status(400).json({ error: '照片已不在当前目录或已隐藏，请刷新后重新选择代表图' });
+    }
+    req.session.markStore.setBurstLeader(key, id);
+    await req.session.markStore.flush();
+    const leaders = req.session.markStore.data.burstLeaders;
+    const revision = req.session.markStore.data.burstRevision;
+    emit(req.session, { type: 'burst-leaders', leaders, revision });
+    res.json({ leaders, revision });
+  } catch (err) { next(err); }
+});

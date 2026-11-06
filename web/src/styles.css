@@ -746,3 +746,21 @@ button.primary.danger { background: var(--reject); border-color: var(--reject); 
 .presence-off .presence-dot { filter: grayscale(.6); }
 /* 正在按他筛选：描一圈。比换背景色更不容易和「在线」那个状态混淆。 */
 .presence-active { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 999px; }
+
+/* 连拍择优、选片版本和数据恢复 */
+.stack-compare { position: absolute; top: 8px; left: 8px; z-index: 3; font-size: 12px; }
+.burst-actions { padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.burst-actions [role="alert"] { flex-basis: 100%; }
+.versions-panel { width: min(850px, 90vw); }
+.version-selectors { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.version-selectors label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.version-selectors select { max-width: 100%; }
+.version-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.version-columns ul, .backup-list { max-height: 240px; overflow: auto; overflow-wrap: anywhere; }
+.backup-import { display: block; margin: 18px 0; }
+.backup-import input { display: block; margin-top: 8px; }
+.backup-list { list-style: none; padding: 0; }
+.backup-list li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.backup-list li span { flex: 1 1 250px; }
+.restore-preview { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.restore-preview input { display: block; margin: 8px 0; }

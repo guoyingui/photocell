@@ -147,7 +147,7 @@ export function App() {
             <PhotoInfo id={useView.getState().cursor} />
           </div>
           <Lightbox order={order} byId={byId} />
-          <CompareView order={photoOrder} byId={byId} />
+          <CompareView order={photoOrder} groups={visibleGroups} byId={byId} />
           <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} visibleIds={photoOrder} />
         </> : <>
           <header className="library-empty-header"><span>照片选片工作区</span><ThemeToggle /></header>

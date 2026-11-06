@@ -4,7 +4,7 @@ import { requireSession } from './library.js';
 import { listShares } from '../lib/shares.js';
 import { listUsers } from '../lib/users.js';
 import { logShareEvent } from './share.js';
-import { ownPickedIds, publishSelection, readSelections, selectionError, selectionView, withSelectionLock } from '../lib/selections.js';
+import { captureSelectionVersion, ownPickedIds, publishSelection, readSelections, selectionError, selectionView, withSelectionLock } from '../lib/selections.js';
 
 export const selectionsRouter = express.Router();
 
@@ -75,6 +75,7 @@ selectionsRouter.post('/selection/submit', requirePerm('write'), requireSession,
       data.people[req.actor.user.id] = { ...current, status: 'submitted', pickedIds,
         userId: req.actor.user.id, shareId: req.actor.share.id, nickname: req.actor.user.nickname,
         submittedAt: Date.now(), confirmedAt: null, revision: (current.revision ?? 0) + 1 };
+      captureSelectionVersion(data.people[req.actor.user.id], req.actor.user, 'submit');
       await save();
     });
     await logShareEvent(req.actor.share, { actor: req.actor.user.id, nickname: req.actor.user.nickname,
@@ -111,6 +112,7 @@ for (const action of ['confirm', 'reopen']) {
         data.people[customer.user.id] = { ...current, status: action === 'confirm' ? 'confirmed' : 'draft',
           ...(action === 'confirm' ? { confirmedAt: Date.now() } : { reopenedAt: Date.now() }),
           revision: (current.revision ?? 0) + 1 };
+        captureSelectionVersion(data.people[customer.user.id], customer.user, action);
         await save();
       });
       await logShareEvent(customer.share, { actor: 'admin', targetUserId: customer.user.id,

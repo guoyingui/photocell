@@ -1,3 +1,4 @@
+import { useBurstLeaders } from '../store/burstLeaders';
 import { create } from 'zustand';
 import { getJSON } from './api';
 import { useMarks } from '../store/marks';
@@ -121,6 +122,12 @@ function applyRoleChange(event: { userId?: unknown; role?: unknown }) {
  */
 export function handleRealtimeEvent(event: any): boolean {
   switch (event?.type) {
+    case 'library-restored':
+      window.location.reload();
+      return true;
+    case 'burst-leaders':
+      if (!useRealtime.getState().blocked) useBurstLeaders.getState().remote(event);
+      return true;
     case 'cache-cleared':
       if (!useRealtime.getState().blocked) invalidateThumbCache();
       return true;
@@ -242,6 +249,7 @@ export function createReconnectRefetch(): () => void {
   let opened = false;
   return () => {
     if (!opened) { opened = true; return; }
+    void useBurstLeaders.getState().reload();
     void refetchMarks();
     void useReview.getState().reload();
     void useSelection.getState().reload();

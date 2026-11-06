@@ -5,9 +5,10 @@ import { useView } from '../store/view';
 import { useMarks } from '../store/marks';
 import { setSession } from '../store/session';
 import { useKeyboard } from '../lib/useKeyboard';
+import { putJSON } from '../lib/api';
 import type { Asset } from '../types';
 
-vi.mock('../lib/api', () => ({ putJSON: vi.fn(() => Promise.resolve({})), withSid: (url: string) => url }));
+vi.mock('../lib/api', () => ({ putJSON: vi.fn(() => Promise.resolve({ leaders: { A: 'B' }, revision: 1 })), getSessionId: () => 'test', withSid: (url: string) => url }));
 const assets: Asset[] = ['A', 'B', 'C'].map((id) => ({
   id, stem: id, dir: '', jpg: `${id}.JPG`, raws: [`${id}.CR3`], jpgSize: 1, jpgMtimeMs: 1,
 }));
@@ -61,6 +62,37 @@ describe('双图对比', () => {
     const { rerender, queryByRole } = render(<Harness />);
     rerender(<Harness ids={['A', 'C']} />);
     expect(queryByRole('dialog')).toBeNull();
+    expect(useView.getState().compare).toBeNull();
+  });
+});
+
+describe('连拍组择优', () => {
+  it('候选仅在组内移动，保存交换后的参考图为代表图', async () => {
+    useView.getState().openCompare('A', 'B', 'A');
+    const { getByRole } = render(<CompareView order={order} byId={byId} groups={[{ key: 'A', ids: ['A', 'B'] }, { key: 'C', ids: ['C'] }]} />);
+    expect((getByRole('button', { name: '下一张' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(useView.getState().compare?.candidate).toBe('B');
+    fireEvent.click(getByRole('button', { name: '交换位置' }));
+    await act(async () => fireEvent.click(getByRole('button', { name: '将参考图设为代表图' })));
+    expect(putJSON).toHaveBeenCalledWith('/api/library/burst-leaders', { key: 'A', id: 'B' });
+  });
+  it('确认后仅排除组内其他可见照片，整批可撤销', async () => {
+    useView.getState().openCompare('A', 'B', 'A');
+    const { getByRole } = render(<CompareView order={order} byId={byId} groups={[{ key: 'A', ids: ['A', 'B'] }]} />);
+    fireEvent.click(getByRole('button', { name: '排除其余 1 张…' }));
+    expect(useMarks.getState().marks).toEqual({});
+    await act(async () => fireEvent.click(getByRole('button', { name: '确认排除其余照片' })));
+    expect(useMarks.getState().marks).toEqual({ B: 'reject' });
+    await act(async () => useMarks.getState().undo());
+    expect(useMarks.getState().marks).toEqual({});
+  });
+  it('筛选移除组内候选后关闭对比，访客没有代表图和批量择优入口', () => {
+    useView.getState().openCompare('A', 'B', 'A');
+    setSession({ kind: 'user', user: { id: 'editor', nickname: '客户', role: 'editor' } });
+    const { queryByRole, rerender } = render(<CompareView order={order} byId={byId} groups={[{ key: 'A', ids: ['A', 'B'] }]} />);
+    expect(queryByRole('button', { name: '将参考图设为代表图' })).toBeNull();
+    rerender(<CompareView order={order} byId={byId} groups={[{ key: 'A', ids: ['A'] }]} />);
     expect(useView.getState().compare).toBeNull();
   });
 });

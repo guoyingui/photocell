@@ -332,7 +332,7 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
         <PhotoInfo id={cursor} />
       </div>
       <Lightbox order={order} byId={byId} />
-      <CompareView order={photoOrder} byId={byId} />
+      <CompareView order={photoOrder} groups={visibleGroups} byId={byId} />
       <Toast />
     </div>
   );

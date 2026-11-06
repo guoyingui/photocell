@@ -36,6 +36,10 @@ function createJob(mode = 'copy') {
  * （/api/library/open、/api/library/close）必须被拒绝：界面回到选择器之后，后台
  * 还在一个一个删掉摄影师的原片，而他连取消按钮都找不到了。
  */
+export function hasRunningExportJob(root) {
+  return [...jobs.values()].some((job) => !job.finished && job.root === root);
+}
+
 export function hasRunningMoveJob() {
   for (const job of jobs.values()) {
     if (job.mode === 'move' && !job.finished) return true;
@@ -219,6 +223,9 @@ async function startExport(req, res, next) {
     if (retry && retryIsRunning(req.session.root, retry)) {
       return res.status(409).json({ error: '这个任务仍在执行，请先等待完成或取消' });
     }
+    const selectionVersion = retry?.selectionVersion ?? req.session.markStore.captureFinalVersion('export',
+      assets.filter((asset) => marks[asset.id] === 'pick').map((asset) => asset.id));
+    await req.session.markStore.flush();
     const job = createJob(mode);
     job.root = req.session.root;
     job.parentId = retry?.id ?? null;
@@ -239,6 +246,7 @@ async function startExport(req, res, next) {
     };
 
     const record = {
+      selectionVersion,
       version: 1, id: job.id, parentId: job.parentId, familyId: job.familyId, createdAt: Date.now(), finishedAt: null,
       destRoot, mode, scope: retry ? { kind: 'retry', historyId: retry.id } : body.scope ?? { kind: 'all' },
       options: { includeJpg, jpgSubdir, flatten: opts.flatten, manifest: opts.manifest },

@@ -16,6 +16,9 @@ import { reviewRouter } from './routes/review.js';
 import { selectionsRouter } from './routes/selections.js';
 import { annotationsRouter } from './routes/annotations.js';
 import { xmpRouter } from './routes/xmp.js';
+import { backupsRouter } from './routes/backups.js';
+import { versionsRouter } from './routes/versions.js';
+import { serializeLibraryRoutes } from './lib/libraryTask.js';
 import { cacheRouter } from './routes/cache.js';
 import QRCode from 'qrcode';
 import { getShareById } from './lib/shares.js';
@@ -200,6 +203,8 @@ export const API_MOUNTS = [
   ['/api/library', selectionsRouter],
   ['/api/library', annotationsRouter],
   ['/api/library', cacheRouter],
+  ['/api/library', backupsRouter],
+  ['/api/library', versionsRouter],
   ['/api', imageRouter],
   ['/api/export', exportRouter],
   ['/api/export', xmpRouter],
@@ -207,6 +212,11 @@ export const API_MOUNTS = [
   ['/api/admin', adminRouter],
   ['/api/admin', netaddrRouter],
 ];
+
+// 写入、重扫、导出启动和备份操作共用库级锁，避免恢复与在途写入互相覆盖。
+for (const router of [libraryRouter, marksRouter, reviewRouter, selectionsRouter, annotationsRouter, exportRouter, backupsRouter]) {
+  serializeLibraryRoutes(router);
+}
 
 export function createApp() {
   const app = express();
@@ -224,7 +234,9 @@ export function createApp() {
   // express.json() 之前，恶意请求的请求体连解析都不会解析。
   app.use(requireKnownHost);
 
-  app.use(express.json({ limit: '4mb' }));
+  app.use((req, res, next) => express.json({
+    limit: /^\/api\/library\/backups\/(preview|restore)\/?$/i.test(req.path) ? '25mb' : '4mb',
+  })(req, res, next));
 
   // 挂载顺序本身就是安全要求（计划 Task 6/7）：
   //   attachActor -> 白名单 + defaultDeny -> 各路由自己的 requireAdmin / requirePerm

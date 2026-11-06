@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { assertWithin } from './safepath.js';
 import { readJson, writeJson, withFileLock } from './jsonstore.js';
 import { emitPerListener } from './session.js';
@@ -77,4 +78,11 @@ export async function publishSelection(session, user, share) {
     ? { type: 'selection-updated', userId: user.id }
     : listener.actor.user.id === user.id ? { type: 'selection', selection } : null);
   return selection;
+}
+
+export function captureSelectionVersion(current, user, action) {
+  const version = { id: crypto.randomUUID(), subject: user.id, name: user.nickname, action,
+    createdAt: Date.now(), pickedIds: [...(current.pickedIds ?? [])],
+    note: current.note ?? '', photoNotes: { ...current.photoNotes } };
+  current.history = [...(current.history ?? []), version];
 }
