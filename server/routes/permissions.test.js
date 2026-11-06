@@ -213,6 +213,9 @@ const ENDPOINTS = [
     admin: 200, editor: 403, viewer: 403, none: 401 },
   { method: 'GET', path: '/api/library/versions', deny: 'admin-only',
     admin: 200, editor: 403, viewer: 403, none: 401 },
+  // 相似照片要按需生成缩略图并做整库图像计算，不能让持有分享链接的人反复触发。
+  { method: 'GET', path: '/api/library/similar', deny: 'admin-only',
+    admin: 200, editor: 403, viewer: 403, none: 401 },
   { method: 'GET', path: '/api/library/backups', deny: 'admin-only',
     admin: 200, editor: 403, viewer: 403, none: 401 },
   { method: 'POST', path: '/api/library/backups', deny: 'admin-only',

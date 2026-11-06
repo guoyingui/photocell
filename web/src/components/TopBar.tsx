@@ -14,6 +14,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { SettingsPanel } from './SettingsPanel';
 import { BackupPanel } from './BackupPanel';
 import { VersionsPanel } from './VersionsPanel';
+import { SimilarPanel } from './SimilarPanel';
 import { SelectionsPanel } from './SelectionsPanel';
 import { usePhotoFilterAssets } from '../lib/usePhotoFilters';
 
@@ -70,6 +71,7 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectionsOpen, setSelectionsOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [similarOpen, setSimilarOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
 
   // 四个 tab 的计数只取决于 assets/marks/dirFilter，和当前选中哪个 tab、
@@ -152,7 +154,8 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
           容易和"导出"打架的 auto margin。 */}
       <div className="topbar-actions">
         <ThemeToggle />
-      {canHide && <><button onClick={() => setVersionsOpen(true)}>选片版本…</button>
+      {canHide && <><button onClick={() => setSimilarOpen(true)}>相似照片…</button>
+        <button onClick={() => setVersionsOpen(true)}>选片版本…</button>
         <button onClick={() => setBackupOpen(true)}>备份与恢复…</button></>}
 
         <button onClick={() => setSettingsOpen(true)}>设置…</button>
@@ -163,6 +166,7 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
 
       <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} />
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {similarOpen && <SimilarPanel onClose={() => setSimilarOpen(false)} />}
       {versionsOpen && <VersionsPanel onClose={() => setVersionsOpen(false)} />}
       {backupOpen && <BackupPanel onClose={() => setBackupOpen(false)} />}
       {selectionsOpen && <SelectionsPanel onClose={() => setSelectionsOpen(false)} />}

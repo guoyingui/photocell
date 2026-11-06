@@ -120,6 +120,12 @@ interface MarksState {
   /** 手动关掉错误提示。没有它，保存失败的 toast 会一直挂到下一次标记成功为止。 */
   clearError: () => void;
   setMark: (ids: string[], mark: Mark | null) => void;
+  /**
+   * 一批照片**分别**设置不同的标记（相似组里保留一张、排除其余）。
+   * 整批算一步撤销、一次 PUT；分成两次 setMark 会让 ⌘Z 需要按两下，
+   * 而且两次请求之间失败会留下半组结果。
+   */
+  setMarkMany: (changes: Record<string, Mark | null>) => void;
   undo: () => void;
   redo: () => void;
   /**
@@ -404,10 +410,18 @@ export const useMarks = create<MarksState>((set, get) => {
 
     setMark(ids, mark) {
       if (ids.length === 0) return;
-      const current = get().marks;
+      const changes: Record<string, Mark | null> = {};
+      for (const id of ids) changes[id] = mark;
+      get().setMarkMany(changes);
+    },
+
+    setMarkMany(changes) {
+      const ids = Object.keys(changes);
+      if (ids.length === 0) return;
       const entries: UndoEntry = [...new Set(ids)].map((id) => ({ id, before: ownMark(id) }));
-      const next = { ...current };
+      const next = { ...get().marks };
       for (const id of ids) {
+        const mark = changes[id];
         if (mark === null) delete next[id];
         else next[id] = mark;
       }

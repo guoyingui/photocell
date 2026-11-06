@@ -764,3 +764,33 @@ button.primary.danger { background: var(--reject); border-color: var(--reject); 
 .backup-list li span { flex: 1 1 250px; }
 .restore-preview { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 .restore-preview input { display: block; margin: 8px 0; }
+
+/* 相似照片：组内保留一张，其余批量排除。 */
+.similar-panel { width: min(1120px, 95vw); }
+.similar-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 16px 0; }
+.similar-controls label { display: flex; flex-direction: column; gap: 6px; }
+.similar-controls .similar-toggle { flex-direction: row; align-items: center; gap: 6px; }
+.similar-progress { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.similar-progress progress { width: 100%; height: 8px; }
+.similar-summary { margin: 8px 0; }
+.similar-warning { color: var(--warn); }
+.similar-groups { display: flex; flex-direction: column; gap: 16px; margin-top: 12px; }
+.similar-group { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.similar-group-done { opacity: .72; }
+.similar-group-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.similar-done { margin-left: auto; color: var(--pick); font-size: 12px;
+  border: 1px solid var(--pick); border-radius: 10px; padding: 1px 8px; }
+.similar-thumbs { display: flex; gap: 8px; overflow-x: auto; padding: 10px 2px; }
+.similar-thumb { flex: 0 0 168px; padding: 5px; text-align: left; border: 2px solid var(--line);
+  border-radius: 8px; background: var(--bg-2); overflow: hidden; }
+.similar-thumb img { width: 100%; height: 112px; object-fit: cover; border-radius: 5px;
+  display: block; background: var(--image-bg); }
+.similar-thumb-caption { display: flex; flex-direction: column; gap: 2px; padding: 4px 2px 2px;
+  font-size: 11px; color: var(--muted); }
+.similar-thumb-caption code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.similar-thumb-keeper { border-color: var(--accent); box-shadow: 0 0 0 2px var(--active-bg); }
+.similar-thumb-reject img { opacity: .55; }
+.similar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.similar-confirm { margin-top: 10px; padding: 10px; border: 1px solid var(--warn);
+  border-radius: 8px; background: var(--active-bg); }
+.similar-confirm p { margin: 0 0 8px; }

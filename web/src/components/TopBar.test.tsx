@@ -45,6 +45,20 @@ it('电脑端顶栏提供对比与历史操作，不再显示多选模式', () =
   expect(screen.getByRole('button', { name: '重做' })).toBeTruthy();
 });
 
+it('只有摄影师看得到相似照片入口，访客界面不渲染它', () => {
+  setSession({ kind: 'admin', user: null });
+  const admin = render(<TopBar onExport={() => {}} />);
+  expect(screen.getByRole('button', { name: '相似照片…' })).toBeTruthy();
+  admin.unmount();
+
+  setSession({
+    kind: 'user', user: { id: 'u_ab', nickname: '小林', role: 'editor' },
+    share: null, online: [],
+  });
+  render(<TopBar onExport={() => {}} />);
+  expect(screen.queryByRole('button', { name: '相似照片…' })).toBeNull();
+});
+
 it('目录管理已移到左侧，顶栏不再提供关闭目录的选择文件夹按钮', () => {
   render(<TopBar onExport={() => {}} />);
   expect(screen.queryByRole('button', { name: '选择文件夹' })).toBeNull();

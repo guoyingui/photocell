@@ -17,6 +17,7 @@ interface Props {
 export function Lightbox({ order, byId }: Props) {
   usePreviewCache((state) => state.version);
   const id = useView((s) => s.lightbox);
+  const customOrder = useView((s) => s.lightboxOrder);
   const closeLightbox = useView((s) => s.closeLightbox);
   const openLightbox = useView((s) => s.openLightbox);
   const mark = useMarks((s) => (id ? s.marks[id] : undefined));
@@ -37,7 +38,10 @@ export function Lightbox({ order, byId }: Props) {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
-  const index = id ? order.indexOf(id) : -1;
+  // 相似照片面板可以带一组照片进来（customOrder）。它只影响这一屏的翻页范围，
+  // 不改筛选、不改选区；关闭后自动回到网格顺序。
+  const navigation = customOrder ?? order;
+  const index = id ? navigation.indexOf(id) : -1;
   const asset = id ? byId.get(id) : undefined;
 
   // 换图时归位
@@ -65,10 +69,10 @@ export function Lightbox({ order, byId }: Props) {
   useEffect(() => {
     if (index < 0) return;
     for (let d = -3; d <= 3; d++) {
-      const neighbor = order[index + d];
+      const neighbor = navigation[index + d];
       if (neighbor && neighbor !== id) new Image().src = thumbUrl(neighbor, 'preview');
     }
-  }, [index, id, order]);
+  }, [index, id, navigation]);
 
   useEffect(() => {
     if (!id) return;
@@ -92,17 +96,17 @@ export function Lightbox({ order, byId }: Props) {
         e.preventDefault(); e.stopPropagation();
         setNative(false);
         setZoom({ scale: display.current.scale === FIT ? 2 : FIT, pan: { x: 0, y: 0 } });
-      } else if (e.key === 'ArrowRight' && order[index + 1]) {
+      } else if (e.key === 'ArrowRight' && navigation[index + 1]) {
         e.preventDefault(); e.stopPropagation();
-        openLightbox(order[index + 1]);
-      } else if (e.key === 'ArrowLeft' && order[index - 1]) {
+        openLightbox(navigation[index + 1], customOrder ?? undefined);
+      } else if (e.key === 'ArrowLeft' && navigation[index - 1]) {
         e.preventDefault(); e.stopPropagation();
-        openLightbox(order[index - 1]);
+        openLightbox(navigation[index - 1], customOrder ?? undefined);
       }
     }
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });
-  }, [id, index, order, openLightbox]);
+  }, [id, index, navigation, customOrder, openLightbox]);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -175,9 +179,10 @@ export function Lightbox({ order, byId }: Props) {
           && <span className="lb-message" role="status">正在载入完整预览…</span>}
       </div>
       <div className="lb-actions">
-        <button aria-label="上一张照片" disabled={index <= 0} onClick={() => openLightbox(order[index - 1])}>← 上一张</button>
-        <button aria-label="下一张照片" disabled={index < 0 || index >= order.length - 1}
-          onClick={() => openLightbox(order[index + 1])}>下一张 →</button>
+        <button aria-label="上一张照片" disabled={index <= 0}
+          onClick={() => openLightbox(navigation[index - 1], customOrder ?? undefined)}>← 上一张</button>
+        <button aria-label="下一张照片" disabled={index < 0 || index >= navigation.length - 1}
+          onClick={() => openLightbox(navigation[index + 1], customOrder ?? undefined)}>下一张 →</button>
         {canWrite && <>
           <button className={mark === 'pick' ? 'primary' : ''} onClick={() => applyMark('pick', { targets: [id] })}>收藏（P）</button>
           <button onClick={() => applyMark('reject', { targets: [id] })}>排除（X）</button>
@@ -190,7 +195,7 @@ export function Lightbox({ order, byId }: Props) {
 
       <div className="lb-bar">
         <span>{asset.id}</span>
-        <span className="muted">{index + 1} / {order.length}</span>
+        <span className="muted">{index + 1} / {navigation.length}</span>
         {mark === 'pick' && <span className="badge badge-pick">收藏</span>}
         {mark === 'reject' && <span className="badge badge-reject">排除</span>}
         {asset.raws.length === 0 && <span className="badge badge-warn">无 RAW</span>}

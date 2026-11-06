@@ -18,6 +18,7 @@ import { annotationsRouter } from './routes/annotations.js';
 import { xmpRouter } from './routes/xmp.js';
 import { backupsRouter } from './routes/backups.js';
 import { versionsRouter } from './routes/versions.js';
+import { similarRouter } from './routes/similar.js';
 import { serializeLibraryRoutes } from './lib/libraryTask.js';
 import { cacheRouter } from './routes/cache.js';
 import QRCode from 'qrcode';
@@ -205,6 +206,7 @@ export const API_MOUNTS = [
   ['/api/library', cacheRouter],
   ['/api/library', backupsRouter],
   ['/api/library', versionsRouter],
+  ['/api/library', similarRouter],
   ['/api', imageRouter],
   ['/api/export', exportRouter],
   ['/api/export', xmpRouter],

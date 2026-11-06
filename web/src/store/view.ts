@@ -35,6 +35,11 @@ interface ViewState {
   anchor: string | null;
   selection: Set<string>;
   lightbox: string | null;
+  /**
+   * 打开大图时使用的自定义翻页序列（相似照片组）。null = 用网格当前的 order。
+   * 它不改变筛选和选区，只影响这一屏的上一张/下一张范围。
+   */
+  lightboxOrder: string[] | null;
   compare: { reference: string; candidate: string; groupKey?: string } | null;
   // view.ts 不认识 Group/Asset，没法自己判断某个 id 折叠后是否还可见，
   // 所以这段"给定 id 和当前 expanded 集合，算出应该显示成哪个 id"的判断
@@ -56,7 +61,7 @@ interface ViewState {
   toggleSelect: (id: string) => void;
   /** 框选结束时整批替换选区。空数组等于清空。 */
   setSelection: (ids: string[]) => void;
-  openLightbox: (id: string) => void;
+  openLightbox: (id: string, order?: string[]) => void;
   closeLightbox: () => void;
   openCompare: (reference: string, candidate: string, groupKey?: string) => void;
   closeCompare: () => void;
@@ -87,6 +92,7 @@ const INITIAL = {
   anchor: null,
   selection: new Set<string>(),
   lightbox: null,
+  lightboxOrder: null,
   compare: null,
   // 恒等函数：resolveVisible 由 App 在拿到 groups 之后注入。换文件夹时必须一起
   // 复位——留着的那个闭包捕获的是上一个文件夹的 groups，会把新文件夹的 id 映射
@@ -197,6 +203,8 @@ export const useView = create<ViewState>((set, get) => ({
       cursor: s.cursor && ids.has(s.cursor) ? s.cursor : null,
       anchor: s.anchor && ids.has(s.anchor) ? s.anchor : null,
       lightbox: s.lightbox && ids.has(s.lightbox) ? s.lightbox : null,
+      lightboxOrder: s.lightboxOrder && s.lightbox && ids.has(s.lightbox)
+        ? s.lightboxOrder.filter((id) => ids.has(id)) : null,
       compare: s.compare && ids.has(s.compare.reference) && ids.has(s.compare.candidate) ? s.compare : null,
       selection,
     };
@@ -228,8 +236,15 @@ export const useView = create<ViewState>((set, get) => ({
   // 一起标记了，而大图角标只显示当前这一张的状态，不会有任何提示。所以进大图
   // 这一刻就把 selection 塌缩成单张，让"大图里操作 = 只影响当前这一张"变成
   // 一个不用调用方（useKeyboard）每次都记得检查 lightbox 状态才能维持的不变量。
-  openLightbox: (id) => set({ lightbox: id, compare: null, cursor: id, anchor: id, selection: new Set([id]) }),
-  closeLightbox: () => set({ lightbox: null }),
+  // order 是可选的自定义翻页序列：相似照片面板用它把一组照片送进大图，
+  // 这样即使这组照片被当前筛选/折叠藏起来了，也能在大图里按 ← → 逐张比较。
+  // 没传、或者传进来的序列不含 id 时退回网格顺序，不能造出一个打不开的大图。
+  openLightbox: (id, order) => set({
+    lightbox: id,
+    lightboxOrder: Array.isArray(order) && order.includes(id) ? [...order] : null,
+    compare: null, cursor: id, anchor: id, selection: new Set([id]),
+  }),
+  closeLightbox: () => set({ lightbox: null, lightboxOrder: null }),
   openCompare: (reference, candidate, groupKey) => {
     if (reference === candidate) return;
     set({ compare: { reference, candidate, ...(groupKey ? { groupKey } : {}) }, lightbox: null,

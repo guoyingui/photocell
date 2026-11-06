@@ -1,4 +1,5 @@
 import { useBurstLeaders } from '../store/burstLeaders';
+import { useSimilar } from '../store/similar';
 import { create } from 'zustand';
 import { getJSON } from './api';
 import { useMarks } from '../store/marks';
@@ -127,6 +128,10 @@ export function handleRealtimeEvent(event: any): boolean {
       return true;
     case 'burst-leaders':
       if (!useRealtime.getState().blocked) useBurstLeaders.getState().remote(event);
+      return true;
+    case 'similar-progress':
+      // 只驱动面板上的进度条，不携带任何照片内容；被阻断的界面不再需要它。
+      if (!useRealtime.getState().blocked) useSimilar.getState().setProgress(event);
       return true;
     case 'cache-cleared':
       if (!useRealtime.getState().blocked) invalidateThumbCache();

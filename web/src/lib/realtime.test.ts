@@ -5,6 +5,7 @@ import {
 } from './realtime';
 import { useMarks } from '../store/marks';
 import { setSession, useSession } from '../store/session';
+import { useSimilar } from '../store/similar';
 
 // realtime.ts 只用 lib/api 的 getJSON；marks.ts 用同一个模块的 putJSON。
 // 两者都要能由测试控制，所以整个模块替身化（与 GuestApp.test.tsx 同一套约定）。
@@ -38,6 +39,7 @@ beforeEach(() => {
   apiMock.getJSON.mockReset();
   apiMock.putJSON.mockReset().mockResolvedValue({ ok: true });
   resetRealtime();
+  useSimilar.getState().reset();
   useMarks.getState().load({});
   setSession({ kind: 'none', user: null, share: null, online: [] });
 });
@@ -45,6 +47,20 @@ beforeEach(() => {
 afterEach(() => {
   resetRealtime();
   vi.clearAllMocks();
+});
+
+describe('相似照片扫描进度', () => {
+  it('认领 similar-progress 帧，只更新进度 store', () => {
+    expect(handleRealtimeEvent({ type: 'similar-progress', scan: 's1', done: 2, total: 5, running: true, seq: 1 })).toBe(true);
+    expect(useSimilar.getState().progress).toEqual({ scan: 's1', done: 2, total: 5, running: true, seq: 1 });
+    expect(useMarks.getState().marks).toEqual({});
+  });
+
+  it('被踢下线后不再接收进度', () => {
+    useRealtime.setState({ blocked: { kind: 'kicked', reason: null } });
+    handleRealtimeEvent({ type: 'similar-progress', scan: 's1', done: 1, total: 2, running: true, seq: 1 });
+    expect(useSimilar.getState().progress).toBeNull();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

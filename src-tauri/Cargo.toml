@@ -1,6 +1,6 @@
 [package]
 name = "photocull"
-version = "1.1.0"
+version = "1.2.0"
 description = "摄影师选图程序"
 authors = ["PhotoCull"]
 edition = "2021"

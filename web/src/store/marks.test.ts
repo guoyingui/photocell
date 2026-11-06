@@ -39,6 +39,16 @@ describe('useMarks', () => {
     expect(marks()).toEqual({});
   });
 
+  it('一批照片分别设置不同标记算一步撤销，并且只发一次 PUT', () => {
+    useMarks.getState().setMarkMany({ a: 'pick', b: 'reject', c: null });
+    expect(marks()).toEqual({ a: 'pick', b: 'reject' });
+    expect(useMarks.getState().undoStack).toHaveLength(1);
+    const body = JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string);
+    expect(body.marks).toEqual({ a: 'pick', b: 'reject', c: null });
+    useMarks.getState().undo();
+    expect(marks()).toEqual({});
+  });
+
   it('连续 undo 逐步回退', () => {
     useMarks.getState().setMark(['a'], 'pick');
     useMarks.getState().setMark(['b'], 'pick');

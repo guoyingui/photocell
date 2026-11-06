@@ -105,6 +105,25 @@ describe('Lightbox', () => {
     fireEvent.click(screen.getByRole('button', { name: '收藏（P）' }));
     expect(useMarks.getState().marks.IMG_0002).toBe('pick');
   });
+  it('相似组可以带自定义翻页序列进入大图，关闭后清空', () => {
+    const b = { ...ASSET, id: 'IMG_0003', stem: 'IMG_0003', raws: ['IMG_0003.CR3'], jpg: 'IMG_0003.JPG' };
+    const c = { ...ASSET, id: 'IMG_0004', stem: 'IMG_0004', raws: ['IMG_0004.CR3'], jpg: 'IMG_0004.JPG' };
+    const byId = new Map([['IMG_0002', ASSET], ['IMG_0003', b], ['IMG_0004', c]]);
+    useView.getState().openLightbox('IMG_0002', ['IMG_0002', 'IMG_0003', 'IMG_0004']);
+    render(<Lightbox order={['IMG_0002']} byId={byId} />);
+
+    expect(screen.getByText('1 / 3')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '下一张照片' }));
+    expect(useView.getState().lightbox).toBe('IMG_0003');
+    expect(useView.getState().lightboxOrder).toEqual(['IMG_0002', 'IMG_0003', 'IMG_0004']);
+    fireEvent.click(screen.getByRole('button', { name: '下一张照片' }));
+    expect(useView.getState().lightbox).toBe('IMG_0004');
+    expect((screen.getByRole('button', { name: '下一张照片' }) as HTMLButtonElement).disabled).toBe(true);
+
+    act(() => useView.getState().closeLightbox());
+    expect(useView.getState().lightboxOrder).toBeNull();
+  });
+
   it('鼠标翻页不越界，只读访客没有标记按钮', () => {
     setSession({ kind: 'user', user: { id: 'viewer', nickname: '访客', role: 'viewer' } });
     useView.getState().openLightbox('IMG_0002');
