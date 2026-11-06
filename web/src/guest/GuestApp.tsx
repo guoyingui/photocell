@@ -286,12 +286,14 @@ export function GuestApp({ marksRecovered = false }: { marksRecovered?: boolean 
           ))}
         </nav>
 
-        <CompareButton order={photoOrder} />
-        <HistoryButtons />
-        <button onClick={() => useView.getState().toggleInfo()}>照片信息（I）</button>
+        <div className="tool-group">
+          <CompareButton order={photoOrder} />
+          <HistoryButtons />
+          <button onClick={() => useView.getState().toggleInfo()}>照片信息（I）</button>
+        </div>
         <MarkBar />
 
-        <span className="muted">
+        <span className="topbar-status">
           {metas.size < assets.length ? `读取元数据 ${metas.size}/${assets.length}` : ''}
         </span>
 

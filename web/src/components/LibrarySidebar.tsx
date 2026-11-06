@@ -17,7 +17,13 @@ export function LibrarySidebar({ onAdd, onOpen, onRemove, busyPath }: {
   const count = useLibrary((state) => state.assets.length);
   const disabled = busyPath !== null || phase === 'scanning' || refreshing;
   return <aside className="library-sidebar" aria-label="照片目录">
-    <div className="library-brand"><strong>PhotoCull</strong><span>照片工作区</span></div>
+    <div className="library-brand">
+      <svg className="brand-mark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+        <path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5" /><circle cx="12" cy="12" r="3.2" />
+      </svg>
+      <strong>PhotoCull</strong><span>照片工作区</span>
+    </div>
     <div className="library-sidebar-heading"><h2>照片目录</h2><span className="folder-count">{roots.length}</span></div>
     <button className="btn-folder add-folder" onClick={onAdd} disabled={disabled}>＋ 添加目录</button>
     <nav className="library-folders" aria-label="已添加目录">

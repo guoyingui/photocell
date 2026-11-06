@@ -11,7 +11,6 @@ import { useFolders } from './store/folders';
 import { useFolderActions } from './lib/useFolderActions';
 import { FolderPicker } from './components/FolderPicker';
 import { Grid } from './components/Grid';
-import { PresenceBar } from './components/PresenceBar';
 import { TopBar } from './components/TopBar';
 import { LibrarySidebar } from './components/LibrarySidebar';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -125,12 +124,8 @@ export function App() {
       <LibrarySidebar onAdd={() => setFolderDialog(true)} onOpen={directory.open} onRemove={directory.remove} busyPath={directory.busyPath} />
       <main className="library-main">
         {phase === 'ready' ? <>
+          {/* 在线成员条（规格 §7.5）在顶栏里，见 TopBar。 */}
           <TopBar onExport={() => setExportOpen(true)} order={photoOrder} />
-
-          {/* 在线成员条（规格 §7.5）。名单来自 SSE 的 presence 事件，一个人都没有
-              时它自己渲染成 null——不开分享的单机流程界面因此完全不变。
-              分享出去之后，"现在有没有人在看、谁是只读的"是摄影师最想知道的两件事。 */}
-          <PresenceBar />
           <FilterWorkspace />
           <PhotoTools groups={visibleGroups} order={photoOrder} />
           <OpinionTools order={photoOrder} />
@@ -153,10 +148,18 @@ export function App() {
           <header className="library-empty-header"><span>照片选片工作区</span><ThemeToggle /></header>
           {phase === 'scanning' && <ScanProgress found={scanFound} />}
           <div className="library-empty">
+            <EmptyFilm />
             <h1>选择照片文件夹</h1>
             <p className="muted">在左侧添加多个照片目录，点击目录开始选片。</p>
             {phase === 'scanning' || directory.busyPath ? <p role="status">正在打开目录，请稍候…</p>
               : <button className="primary" onClick={() => setFolderDialog(true)}>添加照片目录…</button>}
+            <ul className="shortcut-list" aria-label="常用快捷键">
+              <li><kbd>←</kbd><kbd>→</kbd>逐张移动</li>
+              <li><kbd>空格</kbd>查看大图</li>
+              <li><kbd>P</kbd>收藏</li>
+              <li><kbd>X</kbd>排除</li>
+              <li><kbd>U</kbd>取消标记</li>
+            </ul>
           </div>
         </>}
         {error && <div className="library-error picker-error" role="alert"><strong>{error}</strong>
@@ -176,6 +179,22 @@ export function App() {
       {revokeOpen && <SharePanel open onClose={() => setRevokeOpen(false)} />}
       <Toast />
     </div>
+  );
+}
+
+/** 空状态的插图：一条小样，一格被记号笔圈出，一格被划掉——也就是选片本身。 */
+function EmptyFilm() {
+  const holes = Array.from({ length: 16 }, (_, i) => 12 + i * 19);
+  return (
+    <svg className="empty-film" viewBox="0 0 320 92" aria-hidden="true">
+      <rect className="film-strip" x="4" y="8" width="312" height="76" rx="4" />
+      {holes.map((x) => <rect className="film-hole" key={`t${x}`} x={x} y="13" width="9" height="6" rx="1.5" />)}
+      {holes.map((x) => <rect className="film-hole" key={`b${x}`} x={x} y="73" width="9" height="6" rx="1.5" />)}
+      {[0, 1, 2, 3, 4].map((i) => <rect className="film-frame" key={i} x={14 + i * 60} y="25" width="52" height="42" rx="2" />)}
+      <path className="film-loop" d="M71 47C68 23 127 18 131 43C134 70 73 75 69 51C68 41 81 29 98 27"
+            fill="none" strokeWidth="3" strokeLinecap="round" />
+      <path className="film-cross" d="M199 31L241 61M241 31L200 62" fill="none" strokeWidth="3" strokeLinecap="round" />
+    </svg>
   );
 }
 

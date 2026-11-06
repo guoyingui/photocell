@@ -16,6 +16,7 @@ import { BackupPanel } from './BackupPanel';
 import { VersionsPanel } from './VersionsPanel';
 import { SimilarPanel } from './SimilarPanel';
 import { SelectionsPanel } from './SelectionsPanel';
+import { PresenceBar } from './PresenceBar';
 import { usePhotoFilterAssets } from '../lib/usePhotoFilters';
 
 const TABS: { key: FilterTab; label: string }[] = [
@@ -103,65 +104,81 @@ export function TopBar({ onExport, order = [] }: { onExport: () => void; order?:
   const baking = bake.running && bake.total > 0 && bake.done < bake.total;
 
   return (
-    <header className="topbar">
-      {/* 刷新不退回选择器：旧网格继续显示到扫完。这是它和「换文件夹」
-          最重要的区别，也是「选片过程中照片被移动或删除」这个场景要的东西。 */}
-      {/* 只读时整个按钮不渲染：刷新是 admin-only
-          （服务端已经是 requireAdmin），这里是前端第二道防线，置灰不行——
-          访客的顶栏不该看到这个按钮存在过。 */}
-      {canWrite && (
-        <button className="btn-refresh" onClick={() => void refresh()} disabled={refreshing}
-                title="重新扫描这个文件夹。选片进度不会丢">
-          {refreshing ? '正在刷新…' : '刷新'}
-        </button>
-      )}
-
-      <code title={root ?? ''}>{root ? basename(root) : ''}</code>
-
-      <nav className="tabs">
-        {tabs.map((t, i) => (
-          <button key={t.key} className={tab === t.key ? 'tab tab-on' : 'tab'}
-                  onClick={() => setTab(t.key)} title={`快捷键 ${i + 1}`}>
-            {t.key === 'all' && filteredName !== null ? `${filteredName}碰过的` : t.label} <b>{counts[t.key]}</b>
+    <header className="topbar topbar-split">
+      {/* 第一行：在哪个目录、看哪一类照片，以及交付动作（分享、导出）。 */}
+      <div className="topbar-row topbar-main">
+        {/* 刷新不退回选择器：旧网格继续显示到扫完。这是它和「换文件夹」
+            最重要的区别，也是「选片过程中照片被移动或删除」这个场景要的东西。 */}
+        {/* 只读时整个按钮不渲染：刷新是 admin-only
+            （服务端已经是 requireAdmin），这里是前端第二道防线，置灰不行——
+            访客的顶栏不该看到这个按钮存在过。 */}
+        {canWrite && (
+          <button className="btn-refresh" onClick={() => void refresh()} disabled={refreshing}
+                  title="重新扫描这个文件夹。选片进度不会丢">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
+            </svg>
+            {refreshing ? '正在刷新…' : '刷新'}
           </button>
-        ))}
-      </nav>
+        )}
 
-      <CompareButton order={order} />
-      <HistoryButtons />
-      <button onClick={() => useView.getState().toggleInfo()}>照片信息（I）</button>
-      <MarkBar />
+        <strong className="topbar-title" title={root ?? ''}>{root ? basename(root) : ''}</strong>
 
-      <span className="muted">
-        {metas.size < assetCount ? `读取元数据 ${metas.size}/${assetCount}` : ''}
-        {baking ? ` 缓存 ${bake.done}/${bake.total}` : ''}
-      </span>
+        <nav className="tabs">
+          {tabs.map((t, i) => (
+            <button key={t.key} className={tab === t.key ? 'tab tab-on' : 'tab'}
+                    onClick={() => setTab(t.key)} title={`快捷键 ${i + 1}`}>
+              {t.key === 'all' && filteredName !== null ? `${filteredName}碰过的` : t.label} <b>{counts[t.key]}</b>
+            </button>
+          ))}
+        </nav>
 
-      {streamError && <span className="error">{streamError}</span>}
+        <span className="topbar-status">
+          {metas.size < assetCount ? `读取元数据 ${metas.size}/${assetCount}` : ''}
+          {baking ? ` 缓存 ${bake.done}/${bake.total}` : ''}
+        </span>
 
-      {refreshResult && (refreshResult.removed > 0 || refreshResult.added > 0) && (
-        <button className="refresh-result" onClick={dismissRefreshResult}
-                title="点一下关掉这条提示">
-          {refreshResult.removed > 0 && `${refreshResult.removed} 张已不在磁盘上`}
-          {refreshResult.removed > 0 && refreshResult.added > 0 && ' · '}
-          {refreshResult.added > 0 && `新增 ${refreshResult.added} 张`}
-        </button>
-      )}
+        {streamError && <span className="error">{streamError}</span>}
 
-      {/* 原来只有导出按钮靠 `.topbar > .primary { margin-left: auto }` 单独
-          推到最右边；现在两个按钮要一起靠右，所以包一层容器统一处理
-          （见 styles.css 的 `.topbar-actions`），而不是给"分享"也加一份
-          容易和"导出"打架的 auto margin。 */}
-      <div className="topbar-actions">
-        <ThemeToggle />
-      {canHide && <><button onClick={() => setSimilarOpen(true)}>相似照片…</button>
-        <button onClick={() => setVersionsOpen(true)}>选片版本…</button>
-        <button onClick={() => setBackupOpen(true)}>备份与恢复…</button></>}
+        {refreshResult && (refreshResult.removed > 0 || refreshResult.added > 0) && (
+          <button className="refresh-result" onClick={dismissRefreshResult}
+                  title="点一下关掉这条提示">
+            {refreshResult.removed > 0 && `${refreshResult.removed} 张已不在磁盘上`}
+            {refreshResult.removed > 0 && refreshResult.added > 0 && ' · '}
+            {refreshResult.added > 0 && `新增 ${refreshResult.added} 张`}
+          </button>
+        )}
 
-        <button onClick={() => setSettingsOpen(true)}>设置…</button>
-        <button onClick={() => setSelectionsOpen(true)}>客户提交…</button>
-        <button className="btn-share" onClick={() => setShareOpen(true)}>分享…</button>
-        <button className="primary" onClick={onExport}>导出…</button>
+        {/* 分享和导出一起靠右，包一层容器统一处理（见 styles.css 的
+            `.topbar-actions`），而不是各自加一份容易互相打架的 auto margin。
+            在线成员条（规格 §7.5）挨着「分享」：分享出去之后，"现在有没有人在看、
+            谁是只读的"是摄影师最想知道的两件事；没人在线时它自己渲染成 null。 */}
+        <div className="topbar-actions">
+          <PresenceBar />
+          <button className="btn-share" onClick={() => setShareOpen(true)}>分享…</button>
+          <button className="primary" onClick={onExport}>导出…</button>
+        </div>
+      </div>
+
+      {/* 第二行：对照片的操作。左边是看片和标记，右边是整库工具。 */}
+      <div className="topbar-row topbar-tools">
+        <div className="tool-group">
+          <CompareButton order={order} />
+          <HistoryButtons />
+          <button onClick={() => useView.getState().toggleInfo()}>照片信息（I）</button>
+        </div>
+        <MarkBar />
+
+        <div className="tool-group tool-group-end">
+          {canHide && <><button onClick={() => setSimilarOpen(true)}>相似照片…</button>
+            <button onClick={() => setVersionsOpen(true)}>选片版本…</button>
+            <button onClick={() => setBackupOpen(true)}>备份与恢复…</button></>}
+          <button onClick={() => setSettingsOpen(true)}>设置…</button>
+          <button onClick={() => setSelectionsOpen(true)}>客户提交…</button>
+          <span className="tool-divider" aria-hidden="true" />
+          <ThemeToggle />
+        </div>
       </div>
 
       <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} />
