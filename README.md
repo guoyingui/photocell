@@ -119,6 +119,18 @@ macOS、Windows 支持；Linux 需要图形桌面及 zenity 或 kdialog。不可
 
 协同选片桌面版默认关掉，和 `npm start` 一样。普通启动后可在「分享」面板开启、关闭局域网访问。
 
+### 发布到 GitHub Release
+
+1. 把 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 里的版本号改成新版本，提交并推送。
+2. 打 tag 并推送：
+
+       git tag v1.3.0
+       git push origin v1.3.0
+
+GitHub Actions（`.github/workflows/desktop.yml`）会在 macOS、Windows 上各打一次包，两边都成功后创建同名 Release，挂上 `.dmg` 和 `-setup.exe`。说明文字取自 `.github/release-notes.md`，后面附自动生成的更新记录。tag 与 `tauri.conf.json` 的版本号不一致时直接失败；带 `-` 的 tag（如 `v1.3.0-beta.1`）发成预发布。
+
+也可以先在 GitHub 网页上新建 Release 并创建 tag，Actions 打完包会覆盖上传同名安装包。给别人的下载地址固定用 <https://github.com/guoyingui/photocell/releases/latest>。
+
 ## 快捷键
 
 | 键 | 动作 |

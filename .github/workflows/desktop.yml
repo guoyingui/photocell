@@ -1,9 +1,14 @@
 name: desktop
 
+# 推 v* tag：两端打包，全部成功后把安装包挂到同名 GitHub Release（没有就新建，已有就覆盖同名文件）。
+# 手动运行（workflow_dispatch）只打包、留 Actions 产物，不发布。
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -25,6 +30,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      - name: 核对 tag 与应用版本号
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [[ "$want" != "$have" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} 与 src-tauri/tauri.conf.json 的版本 ${have} 不一致。先改版本号并提交，再打 tag。"
+            exit 1
+          fi
       - run: npm ci
       - run: npx tauri build ${{ matrix.args }}
       - uses: actions/upload-artifact@v4
@@ -32,3 +47,34 @@ jobs:
           name: photocull-${{ matrix.os }}
           path: ${{ matrix.artifact }}
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: photocull-*
+          path: dist
+          merge-multiple: true
+      - name: 发布到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，覆盖上传安装包"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            flags=(--verify-tag --title "PhotoCull ${TAG#v}" --notes-file .github/release-notes.md --generate-notes)
+            # v1.3.0-beta.1 这类带 - 的 tag 标为预发布，不会顶掉「最新版本」
+            if [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
+            gh release create "$TAG" dist/* "${flags[@]}"
+          fi
