@@ -48,6 +48,10 @@ build_mac() {
 
 build_win() {
   echo "════════ Windows (NSIS) ════════"
+  # makensis 在 C/POSIX locale 下会直接 std::bad_alloc 崩溃；非交互 shell 常常没设 LANG
+  if [[ "$(locale charmap 2>/dev/null)" != "UTF-8" ]]; then
+    export LC_ALL=en_US.UTF-8
+  fi
   if [[ "$(uname -s)" == "Darwin" || "$(uname -s)" == "Linux" ]]; then
     if ! command -v cargo-xwin >/dev/null; then
       echo "▶ 安装 cargo-xwin"

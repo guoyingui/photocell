@@ -85,6 +85,19 @@ function removeTests(dir) {
   }
 }
 
+// sharp 的 wasm32 兜底包没声明 os/cpu，npm 10 按 --os/--cpu 交叉安装时照样装上（npm 11 不装）。
+// 桌面包只用原生二进制，剔掉它，产物不随 npm 版本变化，也不会被下面的平台检查拦下。
+function pruneWasmSharp(appDir) {
+  const img = path.join(appDir, 'node_modules', '@img');
+  if (!existsSync(img)) return;
+  for (const name of readdirSync(img)) {
+    if (name.startsWith('sharp') && name.includes('wasm32')) {
+      console.log(`▶ 剔除 @img/${name}`);
+      rmSync(path.join(img, name), { recursive: true, force: true });
+    }
+  }
+}
+
 function assertSharp(appDir, os, cpu) {
   const img = path.join(appDir, 'node_modules', '@img');
   const names = existsSync(img) ? readdirSync(img) : [];
@@ -199,6 +212,7 @@ async function stageApp(target, triple) {
   cpSync(path.join(ROOT, 'server'), path.join(stage, 'server'), { recursive: true });
   cpSync(path.join(ROOT, 'shared'), path.join(stage, 'shared'), { recursive: true });
   removeTests(path.join(stage, 'server'));
+  pruneWasmSharp(stage);
   assertSharp(stage, target.os, target.cpu);
 
   const tarPath = path.join(TAURI, 'resources', 'app.tar.gz');
